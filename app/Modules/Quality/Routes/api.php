@@ -1,9 +1,12 @@
 <?php
 
+use App\Modules\Quality\Controllers\QualityApiController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('quality')
-    ->name('api.quality.')
+    ->middleware(['api', 'auth:sanctum'])
     ->group(function () {
-        // CPOB Audit Trail & Lab Release Decision API Endpoints
+        Route::get('/metrics', [QualityApiController::class, 'metrics']);
+        Route::post('/signature', [QualityApiController::class, 'saveSignature']);
+        Route::get('/fishbone-suggestions', [QualityApiController::class, 'fishboneSuggestions']);
     });

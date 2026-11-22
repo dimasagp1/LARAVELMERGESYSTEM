@@ -5,6 +5,7 @@ import { useDeveloperModeStore } from '@/Stores/developerModeStore';
 import { useThemeStore } from '@/Stores/themeStore';
 import GlobalCommandPalette from '@/Components/GlobalCommandPalette.vue';
 import DeveloperModeOverlay from '@/Components/DeveloperModeOverlay.vue';
+import NotificationCenterDropdown from '@/Components/NotificationCenterDropdown.vue';
 import {
     LayoutGrid,
     Search,
@@ -32,6 +33,7 @@ import {
     Folder,
     Layers,
     FileCheck,
+    Settings,
 } from 'lucide-vue-next';
 
 const props = defineProps({
@@ -248,6 +250,9 @@ if (typeof window !== 'undefined') {
                             </span>
                         </button>
 
+                        <!-- Notification Center Lonceng -->
+                        <NotificationCenterDropdown />
+
                         <!-- Dark Mode Toggle -->
                         <button
                             @click="themeStore.toggleTheme"
@@ -273,6 +278,23 @@ if (typeof window !== 'undefined') {
                             <span class="hidden lg:inline">Dev Mode</span>
                             <span :class="['w-2 h-2 rounded-full', devStore.isEnabled ? 'bg-white animate-ping' : 'bg-slate-300 dark:bg-slate-600']" />
                         </button>
+
+                        <!-- Settings & Admin Links -->
+                        <Link
+                            href="/settings"
+                            class="p-2 rounded-xl text-slate-500 dark:text-slate-400 hover:text-emerald-700 dark:hover:text-emerald-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                            title="Pengaturan Sistem & Branding"
+                        >
+                            <Settings class="w-4 h-4" />
+                        </Link>
+
+                        <Link
+                            href="/settings/users"
+                            class="p-2 rounded-xl text-slate-500 dark:text-slate-400 hover:text-emerald-700 dark:hover:text-emerald-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                            title="Manajemen Pengguna & Hak Akses"
+                        >
+                            <Users class="w-4 h-4" />
+                        </Link>
 
                         <!-- User Profile -->
                         <div class="flex items-center gap-2 pl-2 border-l border-slate-200 dark:border-slate-800">

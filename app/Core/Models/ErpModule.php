@@ -96,4 +96,20 @@ class ErpModule extends Model
     {
         return $this->hasMany(ApprovalWorkflow::class, 'module_id');
     }
+
+    /**
+     * @return HasMany<CustomEntity, $this>
+     */
+    public function customEntities(): HasMany
+    {
+        return $this->hasMany(CustomEntity::class, 'module_id');
+    }
+
+    /**
+     * @return HasMany<CustomDashboardWidget, $this>
+     */
+    public function customWidgets(): HasMany
+    {
+        return $this->hasMany(CustomDashboardWidget::class, 'module_id')->orderBy('sort_order');
+    }
 }

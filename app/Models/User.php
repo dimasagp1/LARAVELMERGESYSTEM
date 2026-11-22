@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Core\Models\ApprovalLog;
 use App\Core\Models\Department;
+use App\Core\Models\UserAccessPermission;
 use App\Core\Models\UserModulePreference;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -112,5 +113,79 @@ class User extends Authenticatable
     public function approvalLogs(): HasMany
     {
         return $this->hasMany(ApprovalLog::class);
+    }
+
+    /**
+     * @return HasMany<UserAccessPermission, $this>
+     */
+    public function accessPermissions(): HasMany
+    {
+        return $this->hasMany(UserAccessPermission::class);
+    }
+
+    public function isSuperAdmin(): bool
+    {
+        return $this->hasAnyRole(['superadmin', 'super_admin']) || $this->email === 'admin@herbatech.com';
+    }
+
+    public function hasModuleAccess(string $moduleSlug): bool
+    {
+        if ($this->isSuperAdmin()) {
+            return true;
+        }
+
+        $hasAnyConfigured = $this->accessPermissions()->exists();
+        if (! $hasAnyConfigured) {
+            return true;
+        }
+
+        return $this->accessPermissions()
+            ->where('module_slug', $moduleSlug)
+            ->where('can_view', true)
+            ->exists();
+    }
+
+    public function hasMenuAccess(string $moduleSlug, string $menuRoute): bool
+    {
+        if ($this->isSuperAdmin()) {
+            return true;
+        }
+
+        $hasAnyConfigured = $this->accessPermissions()->exists();
+        if (! $hasAnyConfigured) {
+            return true;
+        }
+
+        // Check explicit menu route permission
+        $menuPerm = $this->accessPermissions()
+            ->where('module_slug', $moduleSlug)
+            ->where('menu_route', $menuRoute)
+            ->first();
+
+        if ($menuPerm) {
+            return (bool) $menuPerm->can_view;
+        }
+
+        // If specific menus are configured for this module, unlisted menus are not accessible
+        $hasMenuRestrictions = $this->accessPermissions()
+            ->where('module_slug', $moduleSlug)
+            ->whereNotNull('menu_route')
+            ->exists();
+
+        if ($hasMenuRestrictions) {
+            return false;
+        }
+
+        // If only module-level permission is set without granular menu rows, fall back to module access
+        return $this->hasModuleAccess($moduleSlug);
+    }
+
+    /**
+     * Check if user is QA or Management personnel for quality oversight.
+     */
+    public function isQaOrManagement(): bool
+    {
+        return $this->hasAnyRole(['qa', 'superadmin', 'head_of_quality', 'operational_manager', 'general_manager'])
+            || in_array(strtolower($this->department?->name ?? ''), ['qa', 'quality assurance', 'management', 'direksi']);
     }
 }

@@ -1,6 +1,7 @@
 <script setup>
+import { Link } from '@inertiajs/vue3';
 import { useDeveloperModeStore } from '@/Stores/developerModeStore';
-import { Terminal, Database, Code, Activity, X } from 'lucide-vue-next';
+import { Terminal, Database, Code, Activity, X, SlidersHorizontal } from 'lucide-vue-next';
 
 const devStore = useDeveloperModeStore();
 </script>
@@ -33,13 +34,20 @@ const devStore = useDeveloperModeStore();
         </div>
 
         <div class="flex items-center gap-3">
+            <Link
+                href="/developer-mode"
+                class="flex items-center gap-1.5 px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-semibold text-xs transition shadow-xs"
+            >
+                <SlidersHorizontal class="w-3.5 h-3.5" />
+                <span>Buka No-Code Builder Console</span>
+            </Link>
             <span class="bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded border border-emerald-500/40 text-[11px] font-mono">
-                Superadmin / Architect
+                Superadmin
             </span>
             <button
                 @click="devStore.toggle"
                 class="text-slate-400 hover:text-white p-1 rounded hover:bg-slate-800 transition"
-                title="Close Developer Overlay"
+                title="Tutup Developer Overlay"
             >
                 <X class="w-4 h-4" />
             </button>

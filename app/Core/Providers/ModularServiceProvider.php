@@ -18,6 +18,7 @@ class ModularServiceProvider extends ServiceProvider
         'Hris',
         'Procurement',
         'Production',
+        'Produksi',
         'Quality',
         'Rnd',
         'SupplyChain',

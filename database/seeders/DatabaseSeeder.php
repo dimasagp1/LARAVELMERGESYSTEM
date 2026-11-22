@@ -17,6 +17,14 @@ class DatabaseSeeder extends Seeder
         $this->call([
             DefaultErpModulesSeeder::class,
             CoreMasterDataSeeder::class,
+            RndModuleSeeder::class,
+            ProcurementModuleSeeder::class,
+            FinanceModuleSeeder::class,
+            SupplyChainModuleSeeder::class,
+            HrisModuleSeeder::class,
+            ProductionModuleSeeder::class,
+            QualityModuleSeeder::class,
+            GeneralAffairModuleSeeder::class,
         ]);
     }
 }

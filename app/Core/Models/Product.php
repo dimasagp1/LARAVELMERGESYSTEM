@@ -42,6 +42,13 @@ class Product extends Model
 
     protected $table = 'products';
 
+    protected $appends = ['code'];
+
+    public function getCodeAttribute(): string
+    {
+        return $this->sku ?? '';
+    }
+
     protected $fillable = [
         'sku',
         'name',

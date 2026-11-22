@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\Core\Services\ModuleManagerService;
+use App\Core\Services\SystemSettingService;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -38,16 +39,21 @@ class HandleInertiaRequests extends Middleware
     {
         /** @var ModuleManagerService $moduleManager */
         $moduleManager = app(ModuleManagerService::class);
+        /** @var SystemSettingService $settingService */
+        $settingService = app(SystemSettingService::class);
+        $publicSettings = $settingService->getPublicSettings();
         $user = $request->user();
 
         return [
             ...parent::share($request),
-            'appName' => config('app.name', 'HerbaTech ERP'),
+            'appName' => $publicSettings['app_name'] ?? config('app.name', 'HerbaTech ERP'),
+            'systemSettings' => $publicSettings,
             'auth' => [
                 'user' => $user ? [
                     'id' => $user->id,
                     'name' => $user->name,
                     'email' => $user->email,
+                    'is_superadmin' => $user->isSuperAdmin(),
                     'department' => $user->department?->only('id', 'code', 'name'),
                     'roles' => $user->getRoleNames(),
                     'permissions' => $user->getAllPermissions()->pluck('name'),

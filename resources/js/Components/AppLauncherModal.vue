@@ -110,9 +110,28 @@ function getColorBadge(theme) {
             </div>
 
             <!-- Footer -->
-            <div class="px-6 py-3 bg-slate-50 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
-                <span>HerbaTech Enterprise Modular ERP • Single Source of Truth</span>
-                <span class="font-mono text-slate-400">8 Modules Active</span>
+            <div class="px-6 py-3.5 bg-slate-50 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500">
+                <div class="flex items-center gap-3">
+                    <Link
+                        href="/settings"
+                        @click="emit('close')"
+                        class="inline-flex items-center gap-1.5 font-semibold text-slate-700 hover:text-emerald-700 hover:underline"
+                    >
+                        <span>⚙️ Pengaturan Sistem</span>
+                    </Link>
+                    <span class="text-slate-300">•</span>
+                    <Link
+                        href="/settings/users"
+                        @click="emit('close')"
+                        class="inline-flex items-center gap-1.5 font-semibold text-slate-700 hover:text-emerald-700 hover:underline"
+                    >
+                        <span>👥 Manajemen Pengguna</span>
+                    </Link>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span>HerbaTech Enterprise Modular ERP</span>
+                    <span class="font-mono text-slate-400">• 8 Modules Active</span>
+                </div>
             </div>
         </div>
     </div>

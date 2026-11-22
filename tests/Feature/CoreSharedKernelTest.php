@@ -115,14 +115,14 @@ class CoreSharedKernelTest extends TestCase
     public function test_all_eight_module_index_routes_are_accessible(): void
     {
         $routes = [
-            '/finance' => 'Modules/Finance/Index',
-            '/general-affair' => 'Modules/GeneralAffair/Index',
-            '/hris' => 'Modules/Hris/Index',
-            '/procurement' => 'Modules/Procurement/Index',
-            '/production' => 'Modules/Production/Index',
-            '/quality' => 'Modules/Quality/Index',
-            '/rnd' => 'Modules/Rnd/Index',
-            '/supply-chain' => 'Modules/SupplyChain/Index',
+            '/finance' => 'Modules/Finance/Overview',
+            '/general-affair' => 'Modules/GeneralAffair/Overview',
+            '/hris' => 'Modules/Hris/Overview',
+            '/procurement' => 'Modules/Procurement/Overview',
+            '/production' => 'Modules/Produksi/Overview',
+            '/quality' => 'Modules/Quality/Overview',
+            '/rnd' => 'Modules/Rnd/Overview',
+            '/supply-chain' => 'Modules/SupplyChain/Overview',
         ];
 
         foreach ($routes as $url => $component) {
