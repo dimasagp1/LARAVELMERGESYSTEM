@@ -38,6 +38,10 @@ const props = defineProps({
         type: String,
         default: 'create',
     },
+    relationOptions: {
+        type: Object,
+        default: () => ({}),
+    },
 });
 
 // Initialize form data
@@ -291,12 +295,30 @@ function submit(targetStatus) {
 
                             <!-- RELATION INPUT -->
                             <template v-else-if="field.field_type === 'relation'">
-                                <input
-                                    v-model="form[field.field_key]"
-                                    type="text"
-                                    :placeholder="`ID atau Referensi ${field.label}`"
-                                    class="w-full bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 dark:text-slate-100 focus:ring-emerald-500 focus:border-emerald-500"
-                                />
+                                <div v-if="relationOptions && relationOptions[field.field_key] && relationOptions[field.field_key].length > 0">
+                                    <select
+                                        v-model="form[field.field_key]"
+                                        :required="field.is_required"
+                                        class="w-full bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 dark:text-slate-100 focus:ring-emerald-500 focus:border-emerald-500"
+                                    >
+                                        <option value="">-- Pilih {{ field.label }} --</option>
+                                        <option
+                                            v-for="rel in relationOptions[field.field_key]"
+                                            :key="rel.id"
+                                            :value="rel.title"
+                                        >
+                                            {{ rel.title }} {{ rel.code ? `[${rel.code}]` : '' }} {{ rel.subtitle ? `- ${rel.subtitle}` : '' }}
+                                        </option>
+                                    </select>
+                                </div>
+                                <div v-else>
+                                    <input
+                                        v-model="form[field.field_key]"
+                                        type="text"
+                                        :placeholder="`ID atau Referensi ${field.label}`"
+                                        class="w-full bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-slate-800 dark:text-slate-100 focus:ring-emerald-500 focus:border-emerald-500"
+                                    />
+                                </div>
                             </template>
 
                             <!-- FILE INPUT -->

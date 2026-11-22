@@ -43,6 +43,10 @@ const props = defineProps({
         type: Object,
         default: () => ({}),
     },
+    relationOptions: {
+        type: Object,
+        default: () => ({}),
+    },
 });
 
 const devStore = useDeveloperModeStore();

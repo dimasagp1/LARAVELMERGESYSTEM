@@ -6,6 +6,7 @@ import { useThemeStore } from '@/Stores/themeStore';
 import GlobalCommandPalette from '@/Components/GlobalCommandPalette.vue';
 import DeveloperModeOverlay from '@/Components/DeveloperModeOverlay.vue';
 import NotificationCenterDropdown from '@/Components/NotificationCenterDropdown.vue';
+import UserDropdownMenu from '@/Components/UserDropdownMenu.vue';
 import {
     LayoutGrid,
     Search,
@@ -296,15 +297,9 @@ if (typeof window !== 'undefined') {
                             <Users class="w-4 h-4" />
                         </Link>
 
-                        <!-- User Profile -->
-                        <div class="flex items-center gap-2 pl-2 border-l border-slate-200 dark:border-slate-800">
-                            <div class="w-8 h-8 rounded-full bg-slate-800 dark:bg-emerald-800 text-white flex items-center justify-center font-semibold text-xs shadow-xs">
-                                SA
-                            </div>
-                            <div class="hidden md:block text-left text-xs leading-tight">
-                                <div class="font-semibold text-slate-800 dark:text-slate-200">Super Administrator</div>
-                                <div class="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">System Architect</div>
-                            </div>
+                        <!-- User Profile Menu -->
+                        <div class="flex items-center pl-2 border-l border-slate-200 dark:border-slate-800">
+                            <UserDropdownMenu />
                         </div>
                     </div>
                 </div>

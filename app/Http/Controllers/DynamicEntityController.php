@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Core\Models\CustomEntity;
 use App\Core\Models\CustomRecord;
 use App\Core\Models\ErpModule;
+use App\Core\Services\CrossModuleDataService;
 use App\Core\Services\ModuleManagerService;
 use App\Core\Services\NoCodeEngineService;
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -19,7 +20,8 @@ class DynamicEntityController extends Controller
 {
     public function __construct(
         protected NoCodeEngineService $noCodeEngine,
-        protected ModuleManagerService $moduleManager
+        protected ModuleManagerService $moduleManager,
+        protected CrossModuleDataService $crossModuleData
     ) {}
 
     /**
@@ -43,8 +45,11 @@ class DynamicEntityController extends Controller
                 'icon' => $module->icon,
                 'menus' => $menus,
             ],
+            'canvasConfig' => $module->schema_config_json['canvas'] ?? null,
             'entities' => $module->customEntities,
             'widgets' => $module->customWidgets,
+            'availableMetrics' => $this->crossModuleData->getMetricsSummary(),
+            'dataSources' => $this->crossModuleData->getAvailableDataSources(),
         ]);
     }
 
@@ -74,6 +79,13 @@ class DynamicEntityController extends Controller
         $records = $query->paginate(15)->withQueryString();
         $menus = $this->moduleManager->getModuleMenus($module->slug, $module->schema_config_json);
 
+        $relationOptions = [];
+        foreach ($entity->fields as $field) {
+            if ($field->field_type === 'relation' && ! empty($field->options_json['source'])) {
+                $relationOptions[$field->field_key] = $this->crossModuleData->fetchSourceRecords($field->options_json['source'], null, 100);
+            }
+        }
+
         return Inertia::render('Modules/Custom/DynamicEntityIndex', [
             'module' => [
                 'id' => $module->id,
@@ -85,6 +97,7 @@ class DynamicEntityController extends Controller
             'entity' => $entity,
             'fields' => $entity->fields,
             'records' => $records,
+            'relationOptions' => $relationOptions,
             'stats' => [
                 'total_records' => CustomRecord::where('entity_id', $entity->id)->count(),
                 'draft_records' => CustomRecord::where('entity_id', $entity->id)->where('status', 'draft')->count(),
@@ -106,6 +119,13 @@ class DynamicEntityController extends Controller
 
         $menus = $this->moduleManager->getModuleMenus($module->slug, $module->schema_config_json);
 
+        $relationOptions = [];
+        foreach ($entity->fields as $field) {
+            if ($field->field_type === 'relation' && ! empty($field->options_json['source'])) {
+                $relationOptions[$field->field_key] = $this->crossModuleData->fetchSourceRecords($field->options_json['source'], null, 100);
+            }
+        }
+
         return Inertia::render('Modules/Custom/DynamicEntityForm', [
             'module' => [
                 'name' => $module->name,
@@ -115,6 +135,7 @@ class DynamicEntityController extends Controller
             ],
             'entity' => $entity,
             'fields' => $entity->fields,
+            'relationOptions' => $relationOptions,
             'record' => null,
             'mode' => 'create',
         ]);
@@ -154,6 +175,13 @@ class DynamicEntityController extends Controller
         $record = CustomRecord::where('entity_id', $entity->id)->findOrFail($recordId);
         $menus = $this->moduleManager->getModuleMenus($module->slug, $module->schema_config_json);
 
+        $relationOptions = [];
+        foreach ($entity->fields as $field) {
+            if ($field->field_type === 'relation' && ! empty($field->options_json['source'])) {
+                $relationOptions[$field->field_key] = $this->crossModuleData->fetchSourceRecords($field->options_json['source'], null, 100);
+            }
+        }
+
         return Inertia::render('Modules/Custom/DynamicEntityForm', [
             'module' => [
                 'name' => $module->name,
@@ -163,6 +191,7 @@ class DynamicEntityController extends Controller
             ],
             'entity' => $entity,
             'fields' => $entity->fields,
+            'relationOptions' => $relationOptions,
             'record' => $record,
             'mode' => 'edit',
         ]);
@@ -184,7 +213,7 @@ class DynamicEntityController extends Controller
         ], $recordId, $request->user());
 
         return redirect("/modules/{$moduleSlug}/entities/{$entitySlug}")
-            ->with('success', 'Perubahan dokumen berhasil diperbarui!');
+            ->with('success', 'Dokumen berhasil diperbarui!');
     }
 
     /**
@@ -192,7 +221,13 @@ class DynamicEntityController extends Controller
      */
     public function destroy(string $moduleSlug, string $entitySlug, int $recordId): RedirectResponse
     {
-        CustomRecord::destroy($recordId);
+        $module = ErpModule::where('slug', $moduleSlug)->firstOrFail();
+        $entity = CustomEntity::where('module_id', $module->id)
+            ->where('slug', $entitySlug)
+            ->firstOrFail();
+
+        $record = CustomRecord::where('entity_id', $entity->id)->findOrFail($recordId);
+        $record->delete();
 
         return back()->with('success', 'Dokumen berhasil dihapus.');
     }
@@ -215,6 +250,7 @@ class DynamicEntityController extends Controller
             'entity' => $entity,
             'fields' => $entity->fields,
             'records' => $records,
+            'printed_at' => now()->format('d/m/Y H:i'),
         ]);
 
         return $pdf->download("{$entity->slug}_report.pdf");
@@ -240,17 +276,28 @@ class DynamicEntityController extends Controller
 
         return response()->stream(function () use ($entity, $records): void {
             $handle = fopen('php://output', 'w');
-            $headerRow = array_merge(['Nomor Dokumen', 'Status', 'Dibuat Pada'], $entity->fields->pluck('label')->toArray());
-            fputcsv($handle, $headerRow);
 
-            foreach ($records as $row) {
-                $data = $row->data_json ?? [];
-                $rowValues = [$row->record_number, $row->status, $row->created_at->format('Y-m-d H:i')];
-                foreach ($entity->fields as $field) {
-                    $rowValues[] = $data[$field->field_key] ?? '-';
-                }
-                fputcsv($handle, $rowValues);
+            // Header Row
+            $cols = ['No Dokumen', 'Status', 'Dibuat Pada'];
+            foreach ($entity->fields as $f) {
+                $cols[] = $f->label;
             }
+            fputcsv($handle, $cols);
+
+            // Data Rows
+            foreach ($records as $r) {
+                $row = [
+                    $r->record_number,
+                    $r->status,
+                    $r->created_at->format('Y-m-d H:i'),
+                ];
+                $data = $r->data_json ?? [];
+                foreach ($entity->fields as $f) {
+                    $row[] = $data[$f->field_key] ?? '-';
+                }
+                fputcsv($handle, $row);
+            }
+
             fclose($handle);
         }, 200, $headers);
     }

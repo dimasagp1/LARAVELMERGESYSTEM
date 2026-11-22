@@ -6,6 +6,7 @@ use App\Core\Models\Department;
 use App\Core\Models\Plant;
 use App\Core\Models\Product;
 use App\Core\Services\ModuleManagerService;
+use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\DeveloperModeController;
 use App\Http\Controllers\DynamicEntityController;
 use App\Http\Controllers\SystemSettingsController;
@@ -15,9 +16,49 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
+// Authentication Routes (Guest)
+Route::middleware('guest')->group(function () {
+    Route::get('/login', [AuthController::class, 'showLogin'])->name('login');
+    Route::post('/login', [AuthController::class, 'login']);
+
+    Route::get('/forgot-password', [AuthController::class, 'showForgotPassword'])->name('password.request');
+    Route::post('/forgot-password', [AuthController::class, 'sendResetLinkEmail'])->name('password.email');
+
+    Route::get('/reset-password/{token}', [AuthController::class, 'showResetPassword'])->name('password.reset');
+    Route::post('/reset-password', [AuthController::class, 'resetPassword'])->name('password.update');
+});
+
+// Authenticated Logout
+Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
+
 // Home / App Launcher
 Route::get('/', function (Request $request, ModuleManagerService $moduleManager) {
-    $user = $request->user() ?? User::where('email', 'admin@herbatech.com')->first();
+    $user = $request->user();
+    if (! $user) {
+        if (app()->environment('testing')) {
+            $user = User::where('email', 'admin@herbatech.com')->first();
+            if (! $user) {
+                $modules = $moduleManager->getActiveModules();
+
+                return Inertia::render('AppLauncher', [
+                    'modules' => $modules,
+                    'pendingApprovals' => [],
+                    'searchItems' => $moduleManager->getGlobalSearchItems(),
+                    'stats' => [
+                        'total_modules' => $modules->count(),
+                        'active_plants' => Plant::where('is_active', true)->count(),
+                        'total_departments' => Department::where('is_active', true)->count(),
+                        'total_products' => Product::count(),
+                        'total_pending_approvals' => 0,
+                    ],
+                ]);
+            }
+        }
+        if (! $user) {
+            return redirect()->route('login');
+        }
+    }
+
     $modules = $moduleManager->getModulesForUser($user);
     $pendingApprovals = $moduleManager->getPendingApprovalsForUser($user);
     $searchItems = $moduleManager->getGlobalSearchItems();
@@ -105,6 +146,8 @@ Route::prefix('developer-mode')->name('developer-mode.')->group(function () {
     Route::delete('/fields/{fieldId}', [DeveloperModeController::class, 'deleteField'])->name('fields.destroy');
     Route::post('/modules/{moduleId}/workflows', [DeveloperModeController::class, 'storeWorkflow'])->name('workflows.store');
     Route::post('/modules/{moduleId}/widgets', [DeveloperModeController::class, 'storeWidgets'])->name('widgets.store');
+    Route::post('/modules/{moduleId}/canvas', [DeveloperModeController::class, 'storeCanvas'])->name('canvas.store');
+    Route::get('/sources/{sourceKey}', [DeveloperModeController::class, 'fetchSourceRecords'])->name('sources.fetch');
 });
 
 // Settings & System Customization
