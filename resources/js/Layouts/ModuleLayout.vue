@@ -808,6 +808,14 @@ function getMenuIcon(iconName) {
     return iconMap[iconName] || Folder;
 }
 
+function getBreadcrumbLabel(crumb) {
+    if (!crumb) return '';
+    if (typeof crumb === 'object') {
+        return crumb.name || crumb.label || crumb.title || '';
+    }
+    return String(crumb);
+}
+
 const menuFilterQuery = ref('');
 const collapsedCategories = ref({});
 
@@ -949,7 +957,7 @@ if (typeof window !== 'undefined') {
                             <template v-if="breadcrumbs.length > 0">
                                 <ChevronRight class="w-3.5 h-3.5 text-slate-400" />
                                 <span class="text-xs text-slate-700 dark:text-slate-200 font-medium truncate max-w-[150px] sm:max-w-xs">
-                                    {{ breadcrumbs[breadcrumbs.length - 1] }}
+                                    {{ getBreadcrumbLabel(breadcrumbs[breadcrumbs.length - 1]) }}
                                 </span>
                             </template>
                         </div>
@@ -1079,7 +1087,7 @@ if (typeof window !== 'undefined') {
                     </div>
 
                     <!-- Dynamic Menus (Categorized Accordion) -->
-                    <div class="max-h-[calc(100vh-17rem)] overflow-y-auto space-y-3 pr-1">
+                    <div class="max-h-[calc(100vh-17rem)] overflow-y-auto space-y-3 pr-1 custom-scrollbar">
                         <div v-for="group in groupedMenus" :key="group.category" class="space-y-1">
                             <!-- Category Header (when sidebar open) -->
                             <button
@@ -1159,7 +1167,7 @@ if (typeof window !== 'undefined') {
                                 <X class="w-5 h-5" />
                             </button>
                         </div>
-                        <div class="overflow-y-auto flex-1 space-y-3 pr-1">
+                        <div class="overflow-y-auto flex-1 space-y-3 pr-1 custom-scrollbar">
                             <div v-for="group in groupedMenus" :key="group.category" class="space-y-1">
                                 <div class="px-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">
                                     {{ group.category }}
