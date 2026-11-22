@@ -1,5 +1,6 @@
 <?php
 
+use App\Core\Controllers\ModuleFeatureController;
 use App\Core\Integrations\Controllers\NotificationApiController;
 use App\Core\Models\Department;
 use App\Core\Models\Plant;
@@ -140,4 +141,12 @@ Route::prefix('modules/{moduleSlug}')->name('modules.')->group(function () {
     Route::delete('/entities/{entitySlug}/{recordId}', [DynamicEntityController::class, 'destroy'])->name('entities.destroy');
     Route::get('/entities/{entitySlug}/export/pdf', [DynamicEntityController::class, 'exportPdf'])->name('entities.export.pdf');
     Route::get('/entities/{entitySlug}/export/excel', [DynamicEntityController::class, 'exportExcel'])->name('entities.export.excel');
+});
+
+// Universal Feature Records Dynamic CRUD
+Route::prefix('modules-feature')->name('modules-feature.')->group(function () {
+    Route::post('/records', [ModuleFeatureController::class, 'store'])->name('records.store');
+    Route::put('/records/{id}', [ModuleFeatureController::class, 'update'])->name('records.update');
+    Route::delete('/records/{id}', [ModuleFeatureController::class, 'destroy'])->name('records.destroy');
+    Route::get('/records/export', [ModuleFeatureController::class, 'export'])->name('records.export');
 });
