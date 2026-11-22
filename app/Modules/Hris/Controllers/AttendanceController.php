@@ -63,7 +63,7 @@ class AttendanceController extends Controller
             'departments' => Department::select('id', 'name', 'code')->get(),
             'officeLocations' => HrisOfficeLocation::where('is_active', true)->get(),
             'shifts' => HrisShift::where('is_active', true)->get(),
-            'employees' => HrisEmployee::with('user')->where('status', 'active')->select('id', 'user_id', 'nik', 'position', 'custom_attributes')->get(),
+            'employees' => HrisEmployee::with('user')->where('status', 'active')->select('id', 'user_id', 'nik', 'position', 'shift_id', 'office_location_id', 'custom_attributes')->get(),
         ]);
     }
 

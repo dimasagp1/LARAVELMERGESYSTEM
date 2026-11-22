@@ -86,25 +86,37 @@ class HrisEmployee extends Model
 
     public function getShiftIdAttribute(): ?int
     {
+        if (isset($this->attributes['shift_id'])) {
+            return (int) $this->attributes['shift_id'];
+        }
+
         return isset($this->custom_attributes['shift_id']) ? (int) $this->custom_attributes['shift_id'] : null;
     }
 
     public function setShiftIdAttribute($value): void
     {
+        $val = $value ? (int) $value : null;
+        $this->attributes['shift_id'] = $val;
         $attrs = $this->custom_attributes ?? [];
-        $attrs['shift_id'] = $value ? (int) $value : null;
+        $attrs['shift_id'] = $val;
         $this->custom_attributes = $attrs;
     }
 
     public function getOfficeLocationIdAttribute(): ?int
     {
+        if (isset($this->attributes['office_location_id'])) {
+            return (int) $this->attributes['office_location_id'];
+        }
+
         return isset($this->custom_attributes['office_location_id']) ? (int) $this->custom_attributes['office_location_id'] : null;
     }
 
     public function setOfficeLocationIdAttribute($value): void
     {
+        $val = $value ? (int) $value : null;
+        $this->attributes['office_location_id'] = $val;
         $attrs = $this->custom_attributes ?? [];
-        $attrs['office_location_id'] = $value ? (int) $value : null;
+        $attrs['office_location_id'] = $val;
         $this->custom_attributes = $attrs;
     }
 

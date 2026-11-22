@@ -56,6 +56,7 @@ import {
     ExternalLink,
     RefreshCw,
     Maximize,
+    GripVertical,
 } from 'lucide-vue-next';
 
 const props = defineProps({
@@ -291,6 +292,57 @@ function addCanvasWidget(type) {
     if (defaults[type]) {
         canvasWidgets.value.push(JSON.parse(JSON.stringify(defaults[type])));
     }
+}
+
+// Drag & Drop Canvas State & Handlers ("Bisa Ditarik-Tarik")
+const draggedWidgetIndex = ref(null);
+const dragOverWidgetIndex = ref(null);
+const isDragging = ref(false);
+
+function onDragStart(e, idx) {
+    draggedWidgetIndex.value = idx;
+    isDragging.value = true;
+    if (e.dataTransfer) {
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', String(idx));
+    }
+}
+
+function onDragOver(e, idx) {
+    e.preventDefault();
+    if (e.dataTransfer) {
+        e.dataTransfer.dropEffect = 'move';
+    }
+    if (draggedWidgetIndex.value === null || draggedWidgetIndex.value === idx) {
+        dragOverWidgetIndex.value = null;
+        return;
+    }
+    dragOverWidgetIndex.value = idx;
+}
+
+function onDragLeave(e, idx) {
+    if (e.currentTarget && e.relatedTarget && e.currentTarget.contains(e.relatedTarget)) {
+        return;
+    }
+    if (dragOverWidgetIndex.value === idx) {
+        dragOverWidgetIndex.value = null;
+    }
+}
+
+function onDrop(e, targetIdx) {
+    e.preventDefault();
+    const sourceIdx = draggedWidgetIndex.value;
+    if (sourceIdx !== null && sourceIdx !== undefined && sourceIdx !== targetIdx) {
+        const itemToMove = canvasWidgets.value.splice(sourceIdx, 1)[0];
+        canvasWidgets.value.splice(targetIdx, 0, itemToMove);
+    }
+    onDragEnd();
+}
+
+function onDragEnd() {
+    draggedWidgetIndex.value = null;
+    dragOverWidgetIndex.value = null;
+    isDragging.value = false;
 }
 
 function moveWidgetUp(idx) {
@@ -926,8 +978,51 @@ const colorThemes = [
                         <!-- ========================= -->
                         <!-- A. CANVAS DESIGNER MODE   -->
                         <!-- ========================= -->
-                        <div v-if="canvasViewMode === 'editor'" class="space-y-4">
+                        <div v-if="canvasViewMode === 'editor'" class="canvas-grid-bg bg-slate-950/70 border border-slate-800/90 rounded-3xl p-6 sm:p-8 min-h-[550px] shadow-2xl relative space-y-6">
+                            <!-- Canvas Workspace Header Bar -->
+                            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-800/80">
+                                <div class="flex items-center gap-2.5">
+                                    <span class="relative flex h-2.5 w-2.5">
+                                        <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                        <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                                    </span>
+                                    <span class="text-xs font-bold text-white uppercase tracking-wider font-mono">Workspace Kanvas Visual (Drag & Drop)</span>
+                                    <span class="text-[11px] px-2.5 py-0.5 rounded-full bg-slate-800/90 text-emerald-400 font-mono border border-slate-700/60 font-semibold">
+                                        {{ canvasWidgets.length }} Blok Terpasang
+                                    </span>
+                                </div>
+                                <div class="text-[11px] text-slate-400 flex items-center gap-2 bg-slate-900/80 px-3 py-1.5 rounded-xl border border-slate-800/70">
+                                    <GripVertical class="w-3.5 h-3.5 text-emerald-400" />
+                                    <span>Tarik ikon ⠿ untuk ubah urutan posisi • Ubah lebar kolom di bawah tiap blok</span>
+                                </div>
+                            </div>
+
+                            <!-- Empty State if no widgets -->
                             <div
+                                v-if="canvasWidgets.length === 0"
+                                class="py-20 text-center border-2 border-dashed border-slate-800 rounded-3xl p-8 space-y-4 bg-slate-900/30"
+                            >
+                                <div class="w-14 h-14 mx-auto rounded-2xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center">
+                                    <Layers class="w-7 h-7" />
+                                </div>
+                                <div class="space-y-1">
+                                    <h3 class="text-base font-bold text-white">Kanvas Masih Kosong</h3>
+                                    <p class="text-xs text-slate-400 max-w-md mx-auto">
+                                        Gunakan bilah tombol di atas untuk menambahkan blok KPI, Grafik, Tabel Lintas Modul, atau Tombol Pintasan ke kanvas ini.
+                                    </p>
+                                </div>
+                                <button
+                                    @click="addCanvasWidget('kpi')"
+                                    class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs inline-flex items-center gap-2 transition cursor-pointer shadow-lg shadow-emerald-600/30"
+                                >
+                                    <Plus class="w-4 h-4" />
+                                    <span>Tambah Blok Pertama</span>
+                                </button>
+                            </div>
+
+                            <!-- Interactive Draggable Grid -->
+                            <div
+                                v-else
                                 :class="[
                                     'grid gap-5',
                                     canvasConfig.columns === 1 ? 'grid-cols-1' : '',
@@ -938,34 +1033,62 @@ const colorThemes = [
                             >
                                 <div
                                     v-for="(w, idx) in canvasWidgets"
-                                    :key="w.id || idx"
+                                    :key="w.id || `canvas-widget-${idx}`"
+                                    :draggable="true"
+                                    @dragstart="onDragStart($event, idx)"
+                                    @dragover.prevent="onDragOver($event, idx)"
+                                    @dragleave="onDragLeave($event, idx)"
+                                    @drop="onDrop($event, idx)"
+                                    @dragend="onDragEnd"
                                     :class="[
-                                        'bg-slate-950 border border-slate-800 p-5 flex flex-col justify-between group relative transition-all duration-200 hover:border-emerald-500/60 shadow-lg',
+                                        'bg-slate-900/90 border border-slate-800 flex flex-col justify-between group relative transition-all duration-200 shadow-xl backdrop-blur-md select-none',
                                         canvasConfig.card_radius,
                                         canvasConfig.card_padding,
                                         w.grid_span === 2 ? 'md:col-span-2' : '',
                                         w.grid_span === 3 ? 'md:col-span-3' : '',
                                         w.grid_span === 4 ? 'col-span-full' : '',
+                                        draggedWidgetIndex === idx ? 'opacity-30 scale-95 border-emerald-500 border-dashed ring-2 ring-emerald-500/40' : '',
+                                        dragOverWidgetIndex === idx ? 'ring-2 ring-emerald-400 border-emerald-400 bg-emerald-500/10 scale-[1.02] shadow-2xl shadow-emerald-500/20' : '',
                                     ]"
                                 >
                                     <!-- Block Header & Controls -->
-                                    <div class="space-y-3">
+                                    <div class="space-y-3.5">
                                         <div class="flex items-center justify-between gap-2 pb-3 border-b border-slate-800/80">
-                                            <div class="flex items-center gap-2">
-                                                <span class="px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase bg-slate-900 border border-slate-700 text-emerald-400">
+                                            <div class="flex items-center gap-2 min-w-0 flex-1">
+                                                <!-- Drag Grip Handle -->
+                                                <div
+                                                    class="p-1 -ml-1 rounded-md text-slate-500 hover:text-emerald-400 cursor-grab active:cursor-grabbing hover:bg-slate-800 transition shrink-0"
+                                                    title="Tahan & tarik untuk mengatur urutan posisi blok"
+                                                >
+                                                    <GripVertical class="w-4 h-4" />
+                                                </div>
+
+                                                <!-- Widget Type Badge -->
+                                                <span
+                                                    :class="[
+                                                        'px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase shrink-0 border',
+                                                        w.widget_type === 'kpi' ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' : '',
+                                                        w.widget_type === 'chart' ? 'bg-sky-500/15 text-sky-400 border-sky-500/30' : '',
+                                                        w.widget_type === 'table' ? 'bg-amber-500/15 text-amber-400 border-amber-500/30' : '',
+                                                        w.widget_type === 'actions' ? 'bg-violet-500/15 text-violet-400 border-violet-500/30' : '',
+                                                        w.widget_type === 'banner' ? 'bg-teal-500/15 text-teal-400 border-teal-500/30' : '',
+                                                    ]"
+                                                >
                                                     {{ w.widget_type }}
                                                 </span>
-                                                <span class="text-xs font-bold text-white truncate max-w-[150px]">
+
+                                                <!-- Title -->
+                                                <span class="text-xs font-bold text-white truncate" :title="w.title">
                                                     {{ w.title }}
                                                 </span>
                                             </div>
 
-                                            <!-- Move Up/Down & Delete -->
-                                            <div class="flex items-center gap-1 opacity-70 group-hover:opacity-100 transition">
+                                            <!-- Secondary Move & Action Buttons -->
+                                            <div class="flex items-center gap-1 shrink-0">
                                                 <button
                                                     @click="moveWidgetUp(idx)"
                                                     :disabled="idx === 0"
-                                                    class="p-1 rounded bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white disabled:opacity-30 cursor-pointer"
+                                                    class="p-1 rounded bg-slate-950/80 hover:bg-slate-800 text-slate-400 hover:text-white disabled:opacity-20 cursor-pointer transition"
                                                     title="Pindah Ke Atas"
                                                 >
                                                     <MoveUp class="w-3.5 h-3.5" />
@@ -973,28 +1096,28 @@ const colorThemes = [
                                                 <button
                                                     @click="moveWidgetDown(idx)"
                                                     :disabled="idx === canvasWidgets.length - 1"
-                                                    class="p-1 rounded bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white disabled:opacity-30 cursor-pointer"
+                                                    class="p-1 rounded bg-slate-950/80 hover:bg-slate-800 text-slate-400 hover:text-white disabled:opacity-20 cursor-pointer transition"
                                                     title="Pindah Ke Bawah"
                                                 >
                                                     <MoveDown class="w-3.5 h-3.5" />
                                                 </button>
                                                 <button
                                                     @click="openEditWidgetModal(w, idx)"
-                                                    class="p-1 rounded bg-slate-900 hover:bg-slate-800 text-emerald-400 cursor-pointer"
+                                                    class="p-1 rounded bg-slate-950/80 hover:bg-slate-800 text-emerald-400 cursor-pointer transition"
                                                     title="Konfigurasi Properti & Data"
                                                 >
                                                     <Edit3 class="w-3.5 h-3.5" />
                                                 </button>
                                                 <button
                                                     @click="duplicateWidget(idx)"
-                                                    class="p-1 rounded bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white cursor-pointer"
+                                                    class="p-1 rounded bg-slate-950/80 hover:bg-slate-800 text-slate-400 hover:text-white cursor-pointer transition"
                                                     title="Duplikasi Blok"
                                                 >
                                                     <Copy class="w-3.5 h-3.5" />
                                                 </button>
                                                 <button
                                                     @click="removeCanvasWidget(idx)"
-                                                    class="p-1 rounded bg-slate-900 hover:bg-slate-800 text-rose-400 cursor-pointer"
+                                                    class="p-1 rounded bg-slate-950/80 hover:bg-slate-800 text-rose-400 cursor-pointer transition"
                                                     title="Hapus Blok"
                                                 >
                                                     <Trash2 class="w-3.5 h-3.5" />
@@ -1002,59 +1125,113 @@ const colorThemes = [
                                             </div>
                                         </div>
 
-                                        <!-- Block Mini Visual Preview in Editor -->
-                                        <div class="py-2">
-                                            <div v-if="w.widget_type === 'kpi'" class="flex items-center justify-between">
-                                                <div>
-                                                    <div class="text-2xl font-black text-white font-mono">
+                                        <!-- Block Visual Preview in Editor -->
+                                        <div class="py-1">
+                                            <!-- KPI Preview -->
+                                            <div v-if="w.widget_type === 'kpi'" class="flex items-center justify-between gap-3">
+                                                <div class="space-y-1">
+                                                    <div class="text-2xl font-black text-white font-mono tracking-tight">
                                                         {{ resolveMetricValue(w) }} <span class="text-xs text-slate-400 font-sans font-normal">{{ w.data_source_config_json?.unit }}</span>
                                                     </div>
-                                                    <div class="text-[11px] text-slate-400">{{ w.data_source_config_json?.subtext || 'Terhubung data' }}</div>
+                                                    <div class="text-[11px] text-slate-400">{{ w.data_source_config_json?.subtext || 'Terhubung data sistem' }}</div>
+                                                    <div class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                                        <span>Live Connected</span>
+                                                    </div>
                                                 </div>
-                                                <div class="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center font-bold">
+                                                <div class="w-11 h-11 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 flex items-center justify-center font-bold shadow-lg shadow-emerald-500/10">
                                                     <Activity class="w-5 h-5" />
                                                 </div>
                                             </div>
 
-                                            <div v-else-if="w.widget_type === 'chart'" class="h-28 rounded-xl bg-slate-900/60 border border-slate-800/80 flex items-center justify-center text-slate-500 text-xs font-mono">
-                                                <BarChart3 class="w-5 h-5 mr-2 text-blue-400" />
-                                                <span>ApexCharts: {{ w.data_source_config_json?.chart_type || 'area' }} view</span>
-                                            </div>
-
-                                            <div v-else-if="w.widget_type === 'table'" class="p-3 rounded-xl bg-slate-900/60 border border-slate-800/80 text-xs text-slate-400 space-y-1">
-                                                <div class="flex items-center justify-between font-bold text-white text-[11px]">
-                                                    <span>Tabel: {{ w.data_source_config_json?.source_key || 'hris_employees' }}</span>
-                                                    <span class="text-emerald-400">Live Grid</span>
+                                            <!-- Chart Preview with Realistic SVG Wave -->
+                                            <div v-else-if="w.widget_type === 'chart'" class="rounded-2xl bg-slate-950/80 border border-slate-800/80 p-3 space-y-2">
+                                                <div class="flex items-center justify-between text-[11px] text-slate-400 font-mono">
+                                                    <span class="flex items-center gap-1.5 text-sky-400 font-bold">
+                                                        <BarChart3 class="w-3.5 h-3.5" />
+                                                        ApexCharts ({{ w.data_source_config_json?.chart_type || 'area' }})
+                                                    </span>
+                                                    <span class="text-[10px] text-emerald-400">7 Hari Terakhir</span>
                                                 </div>
-                                                <div class="text-[10px] text-slate-500">Kolom Kode, Judul, Kategori & Status</div>
+                                                <!-- SVG Line & Gradient Wave -->
+                                                <div class="h-20 w-full relative flex items-end">
+                                                    <svg class="w-full h-full overflow-visible" viewBox="0 0 300 70" preserveAspectRatio="none">
+                                                        <defs>
+                                                            <linearGradient id="chartGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+                                                                <stop offset="0%" stop-color="#10b981" stop-opacity="0.35" />
+                                                                <stop offset="100%" stop-color="#10b981" stop-opacity="0.0" />
+                                                            </linearGradient>
+                                                        </defs>
+                                                        <path d="M 0 50 Q 50 20, 100 35 T 200 15 T 300 10 L 300 70 L 0 70 Z" fill="url(#chartGrad)" />
+                                                        <path d="M 0 50 Q 50 20, 100 35 T 200 15 T 300 10" fill="none" stroke="#10b981" stroke-width="2.5" />
+                                                    </svg>
+                                                </div>
+                                                <div class="flex justify-between text-[9px] text-slate-500 font-mono pt-1 border-t border-slate-800/60">
+                                                    <span>Sen</span><span>Sel</span><span>Rab</span><span>Kam</span><span>Jum</span><span>Sab</span><span>Min</span>
+                                                </div>
                                             </div>
 
-                                            <div v-else-if="w.widget_type === 'actions'" class="flex flex-wrap gap-2">
-                                                <span class="px-2.5 py-1 rounded-lg bg-emerald-600/30 text-emerald-300 text-[10px] font-bold border border-emerald-500/30">+ Input Data</span>
-                                                <span class="px-2.5 py-1 rounded-lg bg-slate-800 text-slate-300 text-[10px] font-bold">📄 Cetak PDF</span>
-                                                <span class="px-2.5 py-1 rounded-lg bg-slate-800 text-slate-300 text-[10px] font-bold">📊 Ekspor CSV</span>
+                                            <!-- Table Preview with Structured Mini Rows -->
+                                            <div v-else-if="w.widget_type === 'table'" class="rounded-2xl bg-slate-950/80 border border-slate-800/80 p-3 space-y-2">
+                                                <div class="flex items-center justify-between font-bold text-white text-[11px]">
+                                                    <span class="flex items-center gap-1.5 text-amber-400">
+                                                        <Table class="w-3.5 h-3.5" />
+                                                        {{ w.data_source_config_json?.source_key || 'hris_employees' }}
+                                                    </span>
+                                                    <span class="text-[10px] text-emerald-400 font-mono">Live Grid Sync</span>
+                                                </div>
+                                                <div class="divide-y divide-slate-800/60 text-[10px]">
+                                                    <div class="flex justify-between py-1 text-slate-500 font-mono font-bold">
+                                                        <span>KODE / REF</span>
+                                                        <span>STATUS</span>
+                                                    </div>
+                                                    <div class="flex justify-between py-1 text-slate-300">
+                                                        <span>DOC-2026-001</span>
+                                                        <span class="text-emerald-400 font-bold">Approved</span>
+                                                    </div>
+                                                    <div class="flex justify-between py-1 text-slate-300">
+                                                        <span>DOC-2026-002</span>
+                                                        <span class="text-amber-400 font-bold">Pending</span>
+                                                    </div>
+                                                </div>
                                             </div>
 
-                                            <div v-else class="p-3 rounded-xl bg-emerald-950/30 border border-emerald-800/40 text-xs text-emerald-300">
-                                                {{ w.data_source_config_json?.message || 'Banner pemberitahuan operasional' }}
+                                            <!-- Actions Preview -->
+                                            <div v-else-if="w.widget_type === 'actions'" class="flex flex-wrap gap-2 py-1">
+                                                <span class="px-3 py-1.5 rounded-xl bg-emerald-600/20 text-emerald-300 text-[11px] font-bold border border-emerald-500/30 flex items-center gap-1">
+                                                    <Plus class="w-3 h-3" /> Input Data
+                                                </span>
+                                                <span class="px-3 py-1.5 rounded-xl bg-slate-800 text-slate-300 text-[11px] font-bold border border-slate-700/60">
+                                                    📄 Cetak PDF
+                                                </span>
+                                                <span class="px-3 py-1.5 rounded-xl bg-slate-800 text-slate-300 text-[11px] font-bold border border-slate-700/60">
+                                                    📊 Ekspor CSV
+                                                </span>
+                                            </div>
+
+                                            <!-- Banner Preview -->
+                                            <div v-else class="p-3.5 rounded-2xl bg-teal-950/40 border border-teal-800/40 text-xs text-teal-300 flex items-start gap-2.5">
+                                                <Sparkles class="w-4 h-4 text-teal-400 shrink-0 mt-0.5" />
+                                                <span>{{ w.data_source_config_json?.message || 'Banner pemberitahuan arahan operasional modul.' }}</span>
                                             </div>
                                         </div>
                                     </div>
 
                                     <!-- Bottom Width Span Controls -->
-                                    <div class="pt-3 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400">
-                                        <span class="font-mono">Lebar Kolom:</span>
-                                        <div class="flex items-center gap-1">
+                                    <div class="pt-3 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400 mt-2">
+                                        <span class="font-mono text-[10px] text-slate-400">
+                                            Lebar: <span class="text-white font-bold">{{ w.grid_span === 4 ? 'Penuh (Full)' : `${w.grid_span || 1} Kolom` }}</span>
+                                        </span>
+                                        <div class="flex items-center gap-1 bg-slate-950/90 p-0.5 rounded-xl border border-slate-800">
                                             <button
                                                 v-for="s in [1, 2, 3, 4]"
                                                 :key="s"
                                                 type="button"
                                                 @click="setWidgetSpan(idx, s)"
                                                 :class="[
-                                                    'px-2 py-0.5 rounded text-[10px] font-bold transition cursor-pointer',
+                                                    'px-2 py-0.5 rounded-lg text-[10px] font-bold transition cursor-pointer',
                                                     w.grid_span === s
-                                                        ? 'bg-emerald-600 text-white'
-                                                        : 'bg-slate-900 text-slate-400 hover:text-white'
+                                                        ? 'bg-emerald-600 text-white shadow-xs'
+                                                        : 'text-slate-400 hover:text-white hover:bg-slate-800'
                                                 ]"
                                             >
                                                 {{ s === 4 ? 'Full' : `${s} Kol` }}
