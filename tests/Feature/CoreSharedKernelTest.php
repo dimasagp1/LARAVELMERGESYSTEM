@@ -55,16 +55,61 @@ class CoreSharedKernelTest extends TestCase
         }
     }
 
-    public function test_dashboard_returns_successful_inertia_response(): void
+    public function test_app_launcher_returns_successful_inertia_response(): void
     {
         $response = $this->get('/');
 
         $response->assertStatus(200);
         $response->assertInertia(fn ($page) => $page
-            ->component('Dashboard')
+            ->component('AppLauncher')
             ->has('modules', 8)
+            ->has('pendingApprovals')
+            ->has('searchItems')
             ->has('stats')
         );
+    }
+
+    public function test_user_can_reorder_modules_via_drag_and_drop(): void
+    {
+        $user = User::where('email', 'admin@herbatech.com')->first();
+        $this->actingAs($user);
+
+        $modules = ErpModule::pluck('id')->toArray();
+        $reversed = array_reverse($modules);
+
+        $response = $this->post('/modules/reorder', [
+            'module_ids' => $reversed,
+        ]);
+
+        $response->assertSessionHas('success');
+
+        $this->assertDatabaseHas('user_module_preferences', [
+            'user_id' => $user->id,
+            'module_id' => $reversed[0],
+            'custom_order' => 0,
+        ]);
+    }
+
+    public function test_user_can_execute_quick_approval_action(): void
+    {
+        $user = User::where('email', 'admin@herbatech.com')->first();
+        $this->actingAs($user);
+
+        $response = $this->post('/approvals/101/action', [
+            'action' => 'approve',
+            'comments' => 'Disetujui dari Inbox Widget',
+        ]);
+
+        $response->assertSessionHas('success');
+    }
+
+    public function test_global_search_api_returns_matching_results(): void
+    {
+        $response = $this->getJson('/api/search?q=procurement');
+
+        $response->assertStatus(200);
+        $data = $response->json();
+        $this->assertNotEmpty($data);
     }
 
     public function test_all_eight_module_index_routes_are_accessible(): void

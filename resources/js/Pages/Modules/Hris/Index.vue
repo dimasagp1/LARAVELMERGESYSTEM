@@ -1,34 +1,43 @@
 <script setup>
-import { Head, Link } from '@inertiajs/vue3';
-import AppLayout from '@/Layouts/AppLayout.vue';
-import {
-    Users,
-    Clock,
-    Award,
-    Banknote,
-    CheckCircle2,
-    Calendar,
-    ArrowRight,
-} from 'lucide-vue-next';
+import { Head } from '@inertiajs/vue3';
+import ModuleLayout from '@/Layouts/ModuleLayout.vue';
+import KpiStatCard from '@/Components/Dashboard/KpiStatCard.vue';
+import InteractiveChartCard from '@/Components/Dashboard/InteractiveChartCard.vue';
+import ApprovalInboxWidget from '@/Components/Dashboard/ApprovalInboxWidget.vue';
+import QuickActionsBar from '@/Components/Dashboard/QuickActionsBar.vue';
+import ActivityFeedWidget from '@/Components/Dashboard/ActivityFeedWidget.vue';
+import { Users, Award } from 'lucide-vue-next';
 
 const props = defineProps({
     module: Object,
     kpis: Object,
+    pendingApprovals: {
+        type: Array,
+        default: () => [],
+    },
+    recentActivities: {
+        type: Array,
+        default: () => [],
+    },
 });
+
+const quickActions = [
+    { label: '+ Input Kaizen Kizuki', icon: 'Award', action: 'create_kaizen', primary: true },
+    { label: 'Run Payroll TER', icon: 'Calculator', action: 'run_payroll' },
+    { label: 'Roster & Time Bank', icon: 'Plus', action: 'roster' },
+];
 
 const chartOptions = {
     chart: {
         type: 'line',
-        height: 280,
+        height: 290,
         toolbar: { show: false },
-        fontFamily: 'inherit',
     },
     colors: ['#2563eb', '#10b981'],
     stroke: { curve: 'smooth', width: [3, 2] },
     xaxis: {
         categories: ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'],
     },
-    tooltip: { theme: 'light' },
 };
 
 const chartSeries = [
@@ -37,110 +46,133 @@ const chartSeries = [
         data: [98.2, 97.4, 96.8, 97.1, 95.8, 94.0, 92.5],
     },
     {
-        name: 'Target Kehadiran (%)',
+        name: 'Target Sasaran (%)',
         data: [95, 95, 95, 95, 95, 95, 95],
     },
 ];
 </script>
 
 <template>
-    <AppLayout>
+    <ModuleLayout
+        :title="module?.name"
+        :module-slug="module?.slug || 'hris'"
+        :module-name="module?.name || 'HRIS (HRISNOW)'"
+        :color-theme="module?.color_theme || 'blue'"
+        :menus="module?.menus || []"
+        :breadcrumbs="['Dashboard SDM & Presensi']"
+    >
         <Head :title="module?.name" />
 
         <div class="space-y-6">
             <!-- Header -->
-            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-slate-200">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-slate-200 dark:border-slate-800">
                 <div class="flex items-center gap-3">
-                    <div class="w-12 h-12 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-200">
+                    <div class="w-12 h-12 rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 flex items-center justify-center border border-blue-200 dark:border-blue-800 shrink-0">
                         <Users class="w-6 h-6" />
                     </div>
                     <div>
                         <div class="flex items-center gap-2">
-                            <h1 class="text-xl font-bold text-slate-900">{{ module?.name }}</h1>
-                            <span class="text-xs px-2 py-0.5 rounded bg-blue-100 text-blue-800 font-medium">Modul 3</span>
+                            <h1 class="text-xl font-bold text-slate-900 dark:text-white">{{ module?.name }}</h1>
+                            <span class="text-xs px-2 py-0.5 rounded bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-300 font-medium">Modul 3</span>
                         </div>
-                        <p class="text-xs text-slate-500 mt-0.5">{{ module?.description }}</p>
+                        <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{{ module?.description }}</p>
                     </div>
                 </div>
 
-                <div class="flex items-center gap-2 text-xs">
-                    <button class="px-3 py-1.5 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700 transition">
-                        + Input Kaizen Kizuki
-                    </button>
-                    <button class="px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700 font-medium hover:bg-slate-50 transition">
-                        Run Payroll TER
-                    </button>
-                </div>
+                <QuickActionsBar :actions="quickActions" />
             </div>
 
             <!-- KPI Cards -->
             <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
-                    <div class="text-xs text-slate-500 font-medium">Total Headcount</div>
-                    <div class="text-xl font-bold text-slate-900 mt-1">{{ kpis?.total_headcount }}</div>
-                    <div class="text-[11px] text-blue-600 font-medium mt-1">160 TKL • 88 TKTL</div>
+                <KpiStatCard
+                    title="Total Headcount"
+                    :value="kpis?.total_headcount"
+                    :trend="3.5"
+                    subtitle="160 TKL • 88 TKTL"
+                    status="blue"
+                    :sparkline-data="[230, 235, 238, 240, 242, 245, 248]"
+                />
+
+                <KpiStatCard
+                    title="Presensi Hari Ini"
+                    :value="`${kpis?.attendance_today_pct}%`"
+                    :trend="1.8"
+                    subtitle="Face Matching & Geofence"
+                    status="emerald"
+                    :sparkline-data="[95, 96, 95.5, 96.2, 96.5, 96.0, 96.8]"
+                />
+
+                <KpiStatCard
+                    title="Total Lembur MTD"
+                    :value="`${kpis?.overtime_hours_mtd} Jam`"
+                    :trend="-4.2"
+                    subtitle="Time Bank: +48 Jam"
+                    status="blue"
+                    :sparkline-data="[340, 335, 330, 325, 320, 315, 312]"
+                />
+
+                <KpiStatCard
+                    title="Rata-rata Skor BSC L3/L4"
+                    :value="`${kpis?.performance_bsc_score} / 100`"
+                    :trend="2.0"
+                    subtitle="35 Sasaran Mutu Terkait"
+                    status="emerald"
+                    :sparkline-data="[88, 89, 89.5, 90, 90.5, 91, 91.2]"
+                />
+            </div>
+
+            <!-- Chart & Approval Inbox -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div class="lg:col-span-2">
+                    <InteractiveChartCard
+                        title="Tren Presensi Karyawan Mingguan vs Target"
+                        subtitle="Verifikasi Face Matching & Anti-Fake GPS Geofencing (Sukoharjo & Boyolali)"
+                        type="line"
+                        :height="300"
+                        :options="chartOptions"
+                        :series="chartSeries"
+                        selected-period="Hari Ini"
+                    />
                 </div>
 
-                <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
-                    <div class="text-xs text-slate-500 font-medium">Presensi Hari Ini</div>
-                    <div class="text-xl font-bold text-slate-900 mt-1">{{ kpis?.attendance_today_pct }}%</div>
-                    <div class="text-[11px] text-emerald-600 font-medium mt-1">Biometrik & Geofence Valid</div>
-                </div>
-
-                <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
-                    <div class="text-xs text-slate-500 font-medium">Total Jam Lembur MTD</div>
-                    <div class="text-xl font-bold text-slate-900 mt-1">{{ kpis?.overtime_hours_mtd }} Jam</div>
-                    <div class="text-[11px] text-slate-500 font-medium mt-1">Time Bank Balance: +48 Jam</div>
-                </div>
-
-                <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
-                    <div class="text-xs text-slate-500 font-medium">Rata-rata Skor BSC L3/L4</div>
-                    <div class="text-xl font-bold text-slate-900 mt-1">{{ kpis?.performance_bsc_score }} / 100</div>
-                    <div class="text-[11px] text-emerald-600 font-medium mt-1">35 Sasaran Mutu Terkait</div>
+                <div>
+                    <ApprovalInboxWidget
+                        title="Antrean Approval SDM"
+                        :items="pendingApprovals"
+                        module-slug="hris"
+                    />
                 </div>
             </div>
 
-            <!-- Chart & Widgets -->
+            <!-- Bottom Row -->
             <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <div class="lg:col-span-2 bg-white p-5 rounded-xl border border-slate-200 shadow-xs">
-                    <div class="flex items-center justify-between mb-4">
-                        <div>
-                            <h3 class="font-bold text-slate-900 text-sm">Tren Presensi Mingguan</h3>
-                            <p class="text-xs text-slate-500">Verifikasi Face Matching & Anti-Fake GPS Geofencing</p>
+                <div class="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-5 shadow-xs">
+                    <div class="flex items-center gap-2 mb-3">
+                        <Award class="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                        <h3 class="font-bold text-slate-900 dark:text-white text-sm">Kaizen Kizuki Feed</h3>
+                    </div>
+                    <p class="text-xs text-slate-500 dark:text-slate-400 mb-4">
+                        Sistem ide perbaikan lantai pabrik operator dengan akumulasi reward point.
+                    </p>
+                    <div class="space-y-2 text-xs">
+                        <div class="p-2.5 rounded-lg bg-blue-50/60 dark:bg-blue-950/40 border border-blue-100 dark:border-blue-800">
+                            <div class="font-semibold text-blue-900 dark:text-blue-200">Optimalisasi Jig Filling Line 2</div>
+                            <div class="text-slate-500 dark:text-slate-400 text-[11px] mt-0.5">Oleh: Joko (Prod) • +25 Poin</div>
+                        </div>
+                        <div class="p-2.5 rounded-lg bg-blue-50/60 dark:bg-blue-950/40 border border-blue-100 dark:border-blue-800">
+                            <div class="font-semibold text-blue-900 dark:text-blue-200">Reduksi Waste Botol Kaca 100ml</div>
+                            <div class="text-slate-500 dark:text-slate-400 text-[11px] mt-0.5">Oleh: Siti (QC) • +30 Poin</div>
                         </div>
                     </div>
-                    <apexchart type="line" height="280" :options="chartOptions" :series="chartSeries" />
                 </div>
 
-                <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-xs flex flex-col justify-between">
-                    <div>
-                        <div class="flex items-center gap-2 mb-3">
-                            <Award class="w-4 h-4 text-blue-600" />
-                            <h3 class="font-bold text-slate-900 text-sm">Kaizen Kizuki Feed</h3>
-                        </div>
-                        <p class="text-xs text-slate-500 mb-4">
-                            Sistem usul perbaikan berkelanjutan operator lantai pabrik dengan akumulasi reward point.
-                        </p>
-                        <div class="space-y-2 text-xs">
-                            <div class="p-2.5 rounded-lg bg-blue-50/60 border border-blue-100">
-                                <div class="font-semibold text-blue-900">Optimalisasi Jig Filling Line 2</div>
-                                <div class="text-slate-500 text-[11px] mt-0.5">Oleh: Joko (Prod) • +25 Poin</div>
-                            </div>
-                            <div class="p-2.5 rounded-lg bg-blue-50/60 border border-blue-100">
-                                <div class="font-semibold text-blue-900">Reduksi Waste Botol Kaca 100ml</div>
-                                <div class="text-slate-500 text-[11px] mt-0.5">Oleh: Siti (QC) • +30 Poin</div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="pt-4 border-t border-slate-100 text-xs">
-                        <Link href="/" class="text-blue-600 font-semibold hover:underline flex items-center justify-between">
-                            <span>Kembali ke App Launcher</span>
-                            <ArrowRight class="w-4 h-4" />
-                        </Link>
-                    </div>
+                <div class="lg:col-span-2">
+                    <ActivityFeedWidget
+                        title="Log Presensi & Payroll Karyawan"
+                        :activities="recentActivities"
+                    />
                 </div>
             </div>
         </div>
-    </AppLayout>
+    </ModuleLayout>
 </template>

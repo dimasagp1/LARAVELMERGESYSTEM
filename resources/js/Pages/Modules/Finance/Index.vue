@@ -1,30 +1,45 @@
 <script setup>
-import { Head, Link } from '@inertiajs/vue3';
-import AppLayout from '@/Layouts/AppLayout.vue';
+import { ref } from 'vue';
+import { Head } from '@inertiajs/vue3';
+import ModuleLayout from '@/Layouts/ModuleLayout.vue';
+import KpiStatCard from '@/Components/Dashboard/KpiStatCard.vue';
+import InteractiveChartCard from '@/Components/Dashboard/InteractiveChartCard.vue';
+import ApprovalInboxWidget from '@/Components/Dashboard/ApprovalInboxWidget.vue';
+import QuickActionsBar from '@/Components/Dashboard/QuickActionsBar.vue';
+import ActivityFeedWidget from '@/Components/Dashboard/ActivityFeedWidget.vue';
 import {
     Landmark,
-    TrendingUp,
-    DollarSign,
-    PieChart,
     ShieldAlert,
     FileSpreadsheet,
     Scale,
-    AlertCircle,
-    ArrowRight,
-    CheckCircle,
+    TrendingUp,
 } from 'lucide-vue-next';
 
 const props = defineProps({
     module: Object,
     kpis: Object,
+    pendingApprovals: {
+        type: Array,
+        default: () => [],
+    },
+    recentActivities: {
+        type: Array,
+        default: () => [],
+    },
 });
+
+const quickActions = [
+    { label: '+ Ajukan Jurnal AJE', icon: 'Plus', action: 'create_aje', primary: true },
+    { label: 'Cek Pagu Gatekeeper', icon: 'Shield', action: 'check_budget' },
+    { label: 'Trial Balance 4-Kolom', icon: 'FileSpreadsheet', action: 'trial_balance' },
+    { label: 'Export Laporan Keuangan', icon: 'Download', action: 'export' },
+];
 
 const chartOptions = {
     chart: {
         type: 'area',
-        height: 280,
+        height: 290,
         toolbar: { show: false },
-        fontFamily: 'inherit',
     },
     colors: ['#059669', '#3b82f6'],
     dataLabels: { enabled: false },
@@ -32,7 +47,6 @@ const chartOptions = {
     xaxis: {
         categories: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
     },
-    tooltip: { theme: 'light' },
 };
 
 const chartSeries = [
@@ -45,118 +59,152 @@ const chartSeries = [
         data: [130, 130, 150, 160, 200, 220, 220, 250, 270, 300, 350, 380],
     },
 ];
+
+function handleQuickAction(actionName) {
+    alert(`Memicu aksi cepat: ${actionName}`);
+}
+
+function handleKpiFilter(kpiTitle) {
+    console.log('Filter diterapkan untuk:', kpiTitle);
+}
 </script>
 
 <template>
-    <AppLayout>
+    <ModuleLayout
+        :title="module?.name"
+        :module-slug="module?.slug || 'finance'"
+        :module-name="module?.name || 'Finance & Budgeting'"
+        :color-theme="module?.color_theme || 'emerald'"
+        :menus="module?.menus || []"
+        :breadcrumbs="['Dashboard Keuangan']"
+    >
         <Head :title="module?.name" />
 
         <div class="space-y-6">
-            <!-- Header -->
-            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-slate-200">
+            <!-- Header Section with Quick Actions Bar -->
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-slate-200 dark:border-slate-800">
                 <div class="flex items-center gap-3">
-                    <div class="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center border border-emerald-200">
+                    <div class="w-12 h-12 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center border border-emerald-200 dark:border-emerald-800 shrink-0">
                         <Landmark class="w-6 h-6" />
                     </div>
                     <div>
                         <div class="flex items-center gap-2">
-                            <h1 class="text-xl font-bold text-slate-900">{{ module?.name }}</h1>
-                            <span class="text-xs px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-medium">Modul 1</span>
+                            <h1 class="text-xl font-bold text-slate-900 dark:text-white">{{ module?.name }}</h1>
+                            <span class="text-xs px-2 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 font-medium">Modul 1</span>
                         </div>
-                        <p class="text-xs text-slate-500 mt-0.5">{{ module?.description }}</p>
+                        <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{{ module?.description }}</p>
                     </div>
                 </div>
 
-                <div class="flex items-center gap-2 text-xs">
-                    <button class="px-3 py-1.5 rounded-lg bg-emerald-600 text-white font-medium hover:bg-emerald-700 transition">
-                        + Ajukan AJE
-                    </button>
-                    <button class="px-3 py-1.5 rounded-lg border border-slate-300 text-slate-700 font-medium hover:bg-slate-50 transition">
-                        Export Trial Balance
-                    </button>
-                </div>
+                <!-- Quick Actions Bar Component -->
+                <QuickActionsBar :actions="quickActions" @action="handleQuickAction" />
             </div>
 
-            <!-- KPI Cards -->
+            <!-- Metric KPI Stat Cards -->
             <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
-                    <div class="text-xs text-slate-500 font-medium">Omset MTD</div>
-                    <div class="text-xl font-bold text-slate-900 mt-1">{{ kpis?.omset_mtd }}</div>
-                    <div class="text-[11px] text-emerald-600 font-medium mt-1 flex items-center gap-1">
-                        <TrendingUp class="w-3 h-3" /> +12.4% vs target
-                    </div>
+                <KpiStatCard
+                    title="Omset Penjualan MTD"
+                    :value="kpis?.omset_mtd"
+                    :trend="12.4"
+                    trend-label="vs target bulanan"
+                    status="emerald"
+                    :sparkline-data="[110, 125, 120, 135, 140, 138, 145]"
+                    @filter="handleKpiFilter"
+                />
+
+                <KpiStatCard
+                    title="Laba Bersih MTD"
+                    :value="kpis?.net_profit_mtd"
+                    :trend="8.5"
+                    subtitle="Margin Bersih: 26.5%"
+                    status="emerald"
+                    :sparkline-data="[28, 32, 30, 34, 36, 35, 38.5]"
+                    @filter="handleKpiFilter"
+                />
+
+                <KpiStatCard
+                    title="Penyerapan Budget Pagu"
+                    :value="`${kpis?.budget_absorption_pct}%`"
+                    :trend="-3.2"
+                    subtitle="Threshold Aman (< 85%)"
+                    status="blue"
+                    :sparkline-data="[50, 55, 58, 62, 65, 67, 68.4]"
+                    @filter="handleKpiFilter"
+                />
+
+                <KpiStatCard
+                    title="Skor 19 Rasio BSC"
+                    :value="`${kpis?.bsc_finance_score} / 100`"
+                    :trend="4.0"
+                    subtitle="Pilar Finansial Grade A"
+                    status="emerald"
+                    :sparkline-data="[80, 82, 84, 85, 86, 87, 88.5]"
+                    @filter="handleKpiFilter"
+                />
+            </div>
+
+            <!-- Center Row: Interactive ApexChart & Approval Inbox -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <!-- Interactive Chart Card Component -->
+                <div class="lg:col-span-2">
+                    <InteractiveChartCard
+                        title="Budget vs Actual P&L 12 Bulan (Juta Rp)"
+                        subtitle="Drill-down per Cost Center & Real-Time Performance"
+                        type="area"
+                        :height="300"
+                        :options="chartOptions"
+                        :series="chartSeries"
+                        :periods="['Hari Ini', 'MTD', 'QTD', 'YTD']"
+                        selected-period="YTD"
+                    />
                 </div>
 
-                <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
-                    <div class="text-xs text-slate-500 font-medium">Laba Bersih MTD</div>
-                    <div class="text-xl font-bold text-slate-900 mt-1">{{ kpis?.net_profit_mtd }}</div>
-                    <div class="text-[11px] text-emerald-600 font-medium mt-1">Margin: 26.5%</div>
-                </div>
-
-                <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
-                    <div class="text-xs text-slate-500 font-medium">Penyerapan Budget Perusahaan</div>
-                    <div class="text-xl font-bold text-slate-900 mt-1">{{ kpis?.budget_absorption_pct }}%</div>
-                    <div class="text-[11px] text-blue-600 font-medium mt-1">Safe Threshold (&lt; 85%)</div>
-                </div>
-
-                <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
-                    <div class="text-xs text-slate-500 font-medium">Skor 19 Rasio BSC (Keuangan)</div>
-                    <div class="text-xl font-bold text-slate-900 mt-1">{{ kpis?.bsc_finance_score }} / 100</div>
-                    <div class="text-[11px] text-emerald-600 font-medium mt-1">Status: Excellent (A)</div>
+                <!-- Approval Inbox Widget Component -->
+                <div>
+                    <ApprovalInboxWidget
+                        title="Antrean Approval FAT"
+                        :items="pendingApprovals"
+                        module-slug="finance"
+                    />
                 </div>
             </div>
 
-            <!-- Chart & Widgets -->
+            <!-- Bottom Row: Real-Time Gatekeeper Status & Unalterable Activity Feed -->
             <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <!-- Main Chart -->
-                <div class="lg:col-span-2 bg-white p-5 rounded-xl border border-slate-200 shadow-xs">
-                    <div class="flex items-center justify-between mb-4">
-                        <div>
-                            <h3 class="font-bold text-slate-900 text-sm">Budget vs Actual P&L (12 Bulan)</h3>
-                            <p class="text-xs text-slate-500">Drill-down per Cost Center & Real-Time Performance</p>
-                        </div>
-                        <span class="text-xs font-mono bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded border border-emerald-200">
-                            YTD 2026
-                        </span>
+                <!-- Budget Gatekeeper Panel -->
+                <div class="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-5 shadow-xs">
+                    <div class="flex items-center gap-2 mb-3">
+                        <ShieldAlert class="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                        <h3 class="font-bold text-slate-900 dark:text-white text-sm">Real-Time Budget Gatekeeper API</h3>
                     </div>
-                    <apexchart type="area" height="280" :options="chartOptions" :series="chartSeries" />
+                    <p class="text-xs text-slate-500 dark:text-slate-400 mb-4">
+                        API internal aktif yang memverifikasi pagu anggaran sebelum transaksi disetujui di Procurement dan GA.
+                    </p>
+
+                    <div class="space-y-2 text-xs">
+                        <div class="flex items-center justify-between p-2.5 rounded-lg bg-emerald-50/60 dark:bg-emerald-950/40 border border-emerald-100 dark:border-emerald-800">
+                            <span class="font-medium text-emerald-900 dark:text-emerald-300">Procurement PR Approval</span>
+                            <span class="text-emerald-700 dark:text-emerald-400 font-bold font-mono">GATED / AUTO-BLOCK</span>
+                        </div>
+                        <div class="flex items-center justify-between p-2.5 rounded-lg bg-emerald-50/60 dark:bg-emerald-950/40 border border-emerald-100 dark:border-emerald-800">
+                            <span class="font-medium text-emerald-900 dark:text-emerald-300">GA Facility WO Expenses</span>
+                            <span class="text-emerald-700 dark:text-emerald-400 font-bold font-mono">GATED / AUTO-BLOCK</span>
+                        </div>
+                        <div class="flex items-center justify-between p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                            <span class="font-medium text-slate-700 dark:text-slate-300">3-Way Matching AP Engine</span>
+                            <span class="text-blue-600 dark:text-blue-400 font-bold font-mono">AUTO-RECONCILE</span>
+                        </div>
+                    </div>
                 </div>
 
-                <!-- Gatekeeper & Interconnection Widget -->
-                <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-xs flex flex-col justify-between">
-                    <div>
-                        <div class="flex items-center gap-2 mb-3">
-                            <ShieldAlert class="w-4 h-4 text-emerald-600" />
-                            <h3 class="font-bold text-slate-900 text-sm">Budget Gatekeeper API Status</h3>
-                        </div>
-                        <p class="text-xs text-slate-500 mb-4">
-                            Melindungi seluruh transaksi Procurement dan GA agar tidak melebihi pagu anggaran secara otomatis.
-                        </p>
-
-                        <div class="space-y-2 text-xs">
-                            <div class="flex items-center justify-between p-2.5 rounded-lg bg-emerald-50/60 border border-emerald-100">
-                                <span class="font-medium text-emerald-900">Procurement PR Check</span>
-                                <span class="text-emerald-700 font-bold">Active / Gated</span>
-                            </div>
-                            <div class="flex items-center justify-between p-2.5 rounded-lg bg-emerald-50/60 border border-emerald-100">
-                                <span class="font-medium text-emerald-900">GA Facility WO Expense</span>
-                                <span class="text-emerald-700 font-bold">Active / Gated</span>
-                            </div>
-                            <div class="flex items-center justify-between p-2.5 rounded-lg bg-slate-50 border border-slate-200">
-                                <span class="font-medium text-slate-700">3-Way Matching AP</span>
-                                <span class="text-blue-700 font-bold">Auto-Sync</span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="pt-4 border-t border-slate-100 text-xs">
-                        <Link href="/" class="text-emerald-600 font-semibold hover:underline flex items-center justify-between">
-                            <span>Kembali ke App Launcher</span>
-                            <ArrowRight class="w-4 h-4" />
-                        </Link>
-                    </div>
+                <!-- Activity Feed Widget Component -->
+                <div class="lg:col-span-2">
+                    <ActivityFeedWidget
+                        title="Audit Trail Keuangan & Jurnal Terkini"
+                        :activities="recentActivities"
+                    />
                 </div>
             </div>
         </div>
-    </AppLayout>
+    </ModuleLayout>
 </template>
