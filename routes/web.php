@@ -148,6 +148,7 @@ Route::prefix('developer-mode')->name('developer-mode.')->group(function () {
     Route::post('/modules/{moduleId}/widgets', [DeveloperModeController::class, 'storeWidgets'])->name('widgets.store');
     Route::post('/modules/{moduleId}/canvas', [DeveloperModeController::class, 'storeCanvas'])->name('canvas.store');
     Route::get('/sources/{sourceKey}', [DeveloperModeController::class, 'fetchSourceRecords'])->name('sources.fetch');
+    Route::get('/query-data', [DeveloperModeController::class, 'queryMenuData'])->name('query-data');
 });
 
 // Settings & System Customization

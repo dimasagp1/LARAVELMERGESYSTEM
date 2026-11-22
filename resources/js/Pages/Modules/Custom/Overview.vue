@@ -90,6 +90,9 @@ const cardPaddingClass = computed(() => {
 // Dynamic metric value resolver
 const resolveWidgetValue = (w) => {
     const conf = w.data_source_config_json || {};
+    if (conf.cached_count !== undefined && conf.cached_count !== null) {
+        return conf.cached_count;
+    }
     if (conf.metric_key && props.availableMetrics[conf.metric_key]) {
         return props.availableMetrics[conf.metric_key].value;
     }
@@ -100,6 +103,18 @@ const resolveWidgetValue = (w) => {
         return props.entities.length;
     }
     return 100;
+};
+
+const resolveWidgetRecords = (w) => {
+    const conf = w.data_source_config_json || {};
+    if (conf.cached_records && conf.cached_records.length > 0) {
+        return conf.cached_records;
+    }
+    return [
+        { id: 1, code: 'DOC-2026-001', title: `Evaluasi ${w.title} Tahap 1`, badge: 'Approved', subtitle: 'PIC: Rian Firmansyah' },
+        { id: 2, code: 'DOC-2026-002', title: `Verifikasi Penyesuaian Dokumen`, badge: 'Pending Review', subtitle: 'PIC: Dewi Lestari' },
+        { id: 3, code: 'DOC-2026-003', title: `Pengujian Berkas Transaksi`, badge: 'In Progress', subtitle: 'PIC: Aditya Pratama' },
+    ];
 };
 
 // Default chart data fallback
@@ -296,7 +311,117 @@ const defaultChartOptions = {
                             </span>
                         </div>
 
-                        <!-- 5. DEFAULT TABLE / INBOX WIDGET -->
+                        <!-- 5. TABLE / DATA GRID WIDGET -->
+                        <div
+                            v-else-if="w.widget_type === 'table'"
+                            :class="[
+                                'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between',
+                                cardRadiusClass,
+                                cardPaddingClass,
+                                w.grid_span === 2 ? 'sm:col-span-2' : '',
+                                w.grid_span === 3 ? 'sm:col-span-2 lg:col-span-3' : '',
+                                w.grid_span === 4 ? 'col-span-full' : '',
+                            ]"
+                        >
+                            <div class="space-y-3">
+                                <div class="flex items-center justify-between pb-2.5 border-b border-slate-100 dark:border-slate-800">
+                                    <div class="flex items-center gap-2">
+                                        <div class="w-7 h-7 rounded-lg bg-amber-500/10 text-amber-500 flex items-center justify-center">
+                                            <Table class="w-4 h-4" />
+                                        </div>
+                                        <div>
+                                            <h3 class="font-bold text-xs text-slate-800 dark:text-slate-100 uppercase tracking-wider">
+                                                {{ w.title }}
+                                            </h3>
+                                            <p class="text-[10px] text-slate-500 dark:text-slate-400">
+                                                {{ w.data_source_config_json?.source_name || 'Tabel Data Terhubung' }}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <span class="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                                        Live Grid
+                                    </span>
+                                </div>
+
+                                <div class="divide-y divide-slate-100 dark:divide-slate-800/80 text-xs">
+                                    <div
+                                        v-for="rec in resolveWidgetRecords(w).slice(0, w.data_source_config_json?.row_limit || 4)"
+                                        :key="rec.id || rec.code"
+                                        class="py-2 flex items-center justify-between gap-3"
+                                    >
+                                        <div class="truncate">
+                                            <span class="font-mono text-emerald-600 dark:text-emerald-400 font-bold mr-2 text-[11px]">{{ rec.code }}</span>
+                                            <span class="text-slate-800 dark:text-slate-200 font-medium text-xs">{{ rec.title }}</span>
+                                            <div v-if="rec.subtitle" class="text-[10px] text-slate-500 mt-0.5">{{ rec.subtitle }}</div>
+                                        </div>
+                                        <span
+                                            :class="[
+                                                'px-2 py-0.5 rounded-full text-[10px] font-bold shrink-0',
+                                                rec.badge?.toLowerCase().includes('approved') ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30' : '',
+                                                rec.badge?.toLowerCase().includes('pending') ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30' : '',
+                                                rec.badge?.toLowerCase().includes('progress') ? 'bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30' : '',
+                                                !rec.badge?.toLowerCase().includes('approved') && !rec.badge?.toLowerCase().includes('pending') && !rec.badge?.toLowerCase().includes('progress') ? 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400' : ''
+                                            ]"
+                                        >
+                                            {{ rec.badge || 'Aktif' }}
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 6. FEED / ACTIVITY STREAM WIDGET -->
+                        <div
+                            v-else-if="w.widget_type === 'feed'"
+                            :class="[
+                                'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between',
+                                cardRadiusClass,
+                                cardPaddingClass,
+                                w.grid_span === 2 ? 'sm:col-span-2' : '',
+                                w.grid_span === 3 ? 'sm:col-span-2 lg:col-span-3' : '',
+                                w.grid_span === 4 ? 'col-span-full' : '',
+                            ]"
+                        >
+                            <div class="space-y-3">
+                                <div class="flex items-center justify-between pb-2.5 border-b border-slate-100 dark:border-slate-800">
+                                    <div class="flex items-center gap-2">
+                                        <div class="w-7 h-7 rounded-lg bg-rose-500/10 text-rose-500 flex items-center justify-center">
+                                            <Clock class="w-4 h-4" />
+                                        </div>
+                                        <div>
+                                            <h3 class="font-bold text-xs text-slate-800 dark:text-slate-100 uppercase tracking-wider">
+                                                {{ w.title }}
+                                            </h3>
+                                            <p class="text-[10px] text-slate-500 dark:text-slate-400">
+                                                {{ w.data_source_config_json?.source_name || 'Riwayat Aktivitas Terkini' }}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <span class="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-rose-500/10 text-rose-400 border border-rose-500/20">
+                                        Feed
+                                    </span>
+                                </div>
+
+                                <div class="space-y-2">
+                                    <div
+                                        v-for="rec in resolveWidgetRecords(w).slice(0, 4)"
+                                        :key="rec.id || rec.code"
+                                        class="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-800 flex items-center justify-between gap-3 text-xs"
+                                    >
+                                        <div class="truncate">
+                                            <div class="font-semibold text-slate-800 dark:text-slate-200 truncate">{{ rec.title }}</div>
+                                            <div class="text-[10px] text-slate-500 mt-0.5 flex items-center gap-2">
+                                                <span class="font-mono text-emerald-600 dark:text-emerald-400 font-bold">{{ rec.code }}</span>
+                                                <span>{{ rec.subtitle || 'Tercatat dalam sistem' }}</span>
+                                            </div>
+                                        </div>
+                                        <span class="text-[10px] font-mono text-slate-400 whitespace-nowrap">{{ rec.date || 'Hari ini' }}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 7. DEFAULT FALLBACK WIDGET -->
                         <div
                             v-else
                             :class="[

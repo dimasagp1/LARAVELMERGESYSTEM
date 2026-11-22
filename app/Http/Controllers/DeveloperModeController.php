@@ -38,6 +38,8 @@ class DeveloperModeController extends Controller
             'users' => $users,
             'dataSources' => $this->crossModuleData->getAvailableDataSources(),
             'availableMetrics' => $this->crossModuleData->getMetricsSummary(),
+            'systemMenus' => $this->crossModuleData->getAllSystemMenusList(),
+            'customEntitiesList' => $this->crossModuleData->getCustomEntitiesList(),
             'stats' => [
                 'total_modules' => $modules->count(),
                 'custom_modules' => $modules->where('is_custom', true)->count(),
@@ -185,5 +187,21 @@ class DeveloperModeController extends Controller
         $records = $this->crossModuleData->fetchSourceRecords($sourceKey, $search, $limit);
 
         return response()->json($records);
+    }
+
+    /**
+     * Query live stats, counts, and sample records for any selected menu or entity.
+     */
+    public function queryMenuData(Request $request): JsonResponse
+    {
+        $type = (string) $request->query('type', 'system_menu');
+        $key = (string) $request->query('key', '');
+        $status = $request->query('status');
+        $aggregation = (string) $request->query('aggregation', 'count');
+        $limit = (int) $request->query('limit', 5);
+
+        $result = $this->crossModuleData->queryMenuData($type, $key, $status, $aggregation, $limit);
+
+        return response()->json($result);
     }
 }

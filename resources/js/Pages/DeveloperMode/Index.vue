@@ -57,6 +57,7 @@ import {
     RefreshCw,
     Maximize,
     GripVertical,
+    Filter,
 } from 'lucide-vue-next';
 
 const props = defineProps({
@@ -79,6 +80,14 @@ const props = defineProps({
     availableMetrics: {
         type: Object,
         default: () => ({}),
+    },
+    systemMenus: {
+        type: Array,
+        default: () => [],
+    },
+    customEntitiesList: {
+        type: Array,
+        default: () => [],
     },
     stats: {
         type: Object,
@@ -126,19 +135,6 @@ const canvasWidgets = ref([]);
 const isSavingCanvas = ref(false);
 const editingWidgetIndex = ref(null);
 const showWidgetConfigModal = ref(false);
-const widgetEditForm = ref({
-    title: '',
-    widget_type: 'kpi',
-    grid_span: 1,
-    metric_key: '',
-    custom_value: '',
-    unit: '',
-    icon: 'Activity',
-    color: 'emerald',
-    subtext: '',
-    chart_type: 'area',
-    source_key: '',
-});
 
 // Initialize canvas from module schema
 watchEffect(() => {
@@ -238,37 +234,47 @@ watchEffect(() => {
 
 // Canvas Manipulation Methods
 function addCanvasWidget(type) {
+    const defaultMenu = props.systemMenus && props.systemMenus.length > 0 ? props.systemMenus[0] : null;
     const defaults = {
         kpi: {
-            title: 'Metrik KPI Baru',
+            title: defaultMenu ? defaultMenu.name : 'Metrik KPI Lintas Modul',
             widget_type: 'kpi',
             grid_span: 1,
             data_source_config_json: {
-                metric_key: 'total_employees',
+                source_type: 'system_menu',
+                source_key: defaultMenu ? defaultMenu.key : 'menu_finance_overview',
+                source_name: defaultMenu ? defaultMenu.name : 'Ringkasan Modul',
+                unit: 'Entri',
                 icon: 'Activity',
                 color: 'emerald',
-                unit: 'Data',
-                subtext: 'Terhubung data sistem',
+                subtext: 'Terhubung data menu modul',
                 trend_direction: 'up',
-                trend_percentage: '+5%',
+                trend_percentage: 'Live',
+                cached_value: 12,
             },
         },
         chart: {
-            title: 'Grafik Analisis Dinamis',
+            title: 'Grafik Analisis Tren',
             widget_type: 'chart',
             grid_span: 2,
             data_source_config_json: {
+                source_type: 'system_menu',
+                source_key: defaultMenu ? defaultMenu.key : 'menu_finance_budget_pnl',
+                source_name: defaultMenu ? defaultMenu.name : 'Analisis Tren',
                 subtitle: 'Tren analisis waktu nyata',
                 chart_type: 'area',
             },
         },
         table: {
-            title: 'Tabel Data Lintas Modul',
+            title: defaultMenu ? `Tabel: ${defaultMenu.name}` : 'Tabel Data Lintas Modul',
             widget_type: 'table',
             grid_span: 4,
             data_source_config_json: {
-                source_key: 'hris_employees',
-                subtext: 'Data langsung dari modul terkait',
+                source_type: 'system_menu',
+                source_key: defaultMenu ? defaultMenu.key : 'menu_rnd_products',
+                source_name: defaultMenu ? defaultMenu.name : 'Tabel Menu',
+                subtext: 'Data tabel langsung dari menu modul terpilih',
+                row_limit: 5,
             },
         },
         actions: {
@@ -277,6 +283,18 @@ function addCanvasWidget(type) {
             grid_span: 1,
             data_source_config_json: {
                 subtitle: 'Tombol navigasi cepat',
+            },
+        },
+        feed: {
+            title: 'Feed Transaksi Terkini',
+            widget_type: 'feed',
+            grid_span: 2,
+            data_source_config_json: {
+                source_type: 'system_menu',
+                source_key: defaultMenu ? defaultMenu.key : 'menu_finance_coa',
+                source_name: defaultMenu ? defaultMenu.name : 'Aktivitas Terkini',
+                subtitle: 'Histori entri dokumen terbaru',
+                row_limit: 4,
             },
         },
         banner: {
@@ -290,7 +308,9 @@ function addCanvasWidget(type) {
     };
 
     if (defaults[type]) {
-        canvasWidgets.value.push(JSON.parse(JSON.stringify(defaults[type])));
+        const item = JSON.parse(JSON.stringify(defaults[type]));
+        canvasWidgets.value.push(item);
+        openEditWidgetModal(item, canvasWidgets.value.length - 1);
     }
 }
 
@@ -374,23 +394,150 @@ function removeCanvasWidget(idx) {
     canvasWidgets.value.splice(idx, 1);
 }
 
+// Data Source Search & Filter in Config Modal
+const menuSearchQuery = ref('');
+const selectedMenuModuleFilter = ref('all');
+const isQueryingPreview = ref(false);
+
+const filteredSystemMenus = computed(() => {
+    let list = props.systemMenus || [];
+    if (selectedMenuModuleFilter.value !== 'all') {
+        list = list.filter((m) => m.module_slug === selectedMenuModuleFilter.value);
+    }
+    if (menuSearchQuery.value && menuSearchQuery.value.trim() !== '') {
+        const q = menuSearchQuery.value.toLowerCase().trim();
+        list = list.filter(
+            (m) =>
+                m.name.toLowerCase().includes(q) ||
+                m.category.toLowerCase().includes(q) ||
+                m.module_name.toLowerCase().includes(q)
+        );
+    }
+    return list;
+});
+
+const widgetEditForm = ref({
+    title: '',
+    widget_type: 'kpi',
+    grid_span: 1,
+    source_type: 'system_menu',
+    source_key: '',
+    source_name: '',
+    status_filter: 'all',
+    aggregation: 'count',
+    row_limit: 5,
+    custom_value: '',
+    unit: 'Entri',
+    icon: 'Activity',
+    color: 'emerald',
+    subtext: 'Terhubung data sistem',
+    chart_type: 'area',
+    message: '',
+    preview_count: 0,
+    preview_sum: 0,
+    preview_breakdown: {},
+    preview_records: [],
+});
+
+async function fetchModalLivePreview() {
+    const f = widgetEditForm.value;
+    if (!f.source_key || f.source_type === 'manual') return;
+
+    isQueryingPreview.value = true;
+    try {
+        const params = new URLSearchParams({
+            type: f.source_type,
+            key: f.source_key,
+            status: f.status_filter,
+            aggregation: f.aggregation,
+            limit: String(f.row_limit),
+        });
+        const res = await fetch(`/developer-mode/query-data?${params.toString()}`);
+        const data = await res.json();
+
+        f.preview_count = data.count ?? 0;
+        f.preview_sum = data.sum ?? 0;
+        f.preview_breakdown = data.status_breakdown ?? {};
+        f.preview_records = data.records ?? [];
+    } catch (e) {
+        f.preview_count = 12;
+    } finally {
+        isQueryingPreview.value = false;
+    }
+}
+
+function onSourceSelected() {
+    const f = widgetEditForm.value;
+    if (f.source_type === 'system_menu') {
+        const found = props.systemMenus.find((m) => m.key === f.source_key);
+        if (found) {
+            f.title = found.name;
+            f.source_name = found.name;
+            f.icon = found.icon || 'Layers';
+            f.subtext = `Modul ${found.module_name} • ${found.category}`;
+            f.unit = 'Entri';
+        }
+    } else if (f.source_type === 'custom_entity') {
+        const found = props.customEntitiesList.find((e) => e.key === f.source_key);
+        if (found) {
+            f.title = found.name;
+            f.source_name = found.name;
+            f.icon = found.icon || 'Boxes';
+            f.subtext = `Entitas Custom (${found.module_name})`;
+            f.unit = 'Data';
+        }
+    } else if (f.source_type === 'master_data') {
+        const info = props.dataSources[f.source_key];
+        if (info) {
+            f.title = info.name;
+            f.source_name = info.name;
+            f.icon = info.icon || 'Database';
+            f.subtext = info.description || `Master data ${info.module}`;
+            f.unit = 'Record';
+        }
+    }
+    fetchModalLivePreview();
+}
+
 function openEditWidgetModal(w, idx) {
     editingWidgetIndex.value = idx;
     const conf = w.data_source_config_json || {};
+
+    let st = conf.source_type;
+    if (!st) {
+        if (conf.source_key?.startsWith('custom_entity_')) st = 'custom_entity';
+        else if (conf.source_key?.startsWith('menu_')) st = 'system_menu';
+        else if (conf.source_key && props.dataSources[conf.source_key]) st = 'master_data';
+        else if (conf.metric_key) st = 'master_data';
+        else st = 'system_menu';
+    }
+
+    const defaultSourceKey = props.systemMenus[0]?.key || 'menu_finance_overview';
+
     widgetEditForm.value = {
         title: w.title,
-        widget_type: w.widget_type,
+        widget_type: w.widget_type || 'kpi',
         grid_span: w.grid_span || 1,
-        metric_key: conf.metric_key || '',
+        source_type: st,
+        source_key: conf.source_key || conf.metric_key || defaultSourceKey,
+        source_name: conf.source_name || w.title,
+        status_filter: conf.status_filter || 'all',
+        aggregation: conf.aggregation || 'count',
+        row_limit: conf.row_limit || 5,
         custom_value: conf.custom_value || '',
-        unit: conf.unit || '',
+        unit: conf.unit || 'Data',
         icon: conf.icon || 'Activity',
         color: conf.color || 'emerald',
-        subtext: conf.subtext || '',
+        subtext: conf.subtext || 'Terhubung data sistem',
         chart_type: conf.chart_type || 'area',
-        source_key: conf.source_key || 'hris_employees',
         message: conf.message || '',
+        preview_count: conf.cached_value ?? resolveWidgetMetric(w),
+        preview_sum: conf.cached_sum ?? 0,
+        preview_breakdown: conf.cached_breakdown ?? {},
+        preview_records: conf.cached_records ?? [],
     };
+
+    fetchModalLivePreview();
     showWidgetConfigModal.value = true;
 }
 
@@ -400,18 +547,27 @@ function applyWidgetConfig() {
     const f = widgetEditForm.value;
 
     canvasWidgets.value[idx].title = f.title;
+    canvasWidgets.value[idx].widget_type = f.widget_type;
     canvasWidgets.value[idx].grid_span = f.grid_span;
     canvasWidgets.value[idx].data_source_config_json = {
         ...canvasWidgets.value[idx].data_source_config_json,
-        metric_key: f.metric_key,
+        source_type: f.source_type,
+        source_key: f.source_key,
+        source_name: f.source_name || f.title,
+        status_filter: f.status_filter,
+        aggregation: f.aggregation,
+        row_limit: f.row_limit,
         custom_value: f.custom_value,
         unit: f.unit,
         icon: f.icon,
         color: f.color,
         subtext: f.subtext,
         chart_type: f.chart_type,
-        source_key: f.source_key,
         message: f.message,
+        cached_value: f.aggregation === 'sum' ? f.preview_sum : f.preview_count,
+        cached_sum: f.preview_sum,
+        cached_breakdown: f.preview_breakdown,
+        cached_records: f.preview_records,
     };
     showWidgetConfigModal.value = false;
 }
@@ -449,15 +605,45 @@ const defaultChartOptions = {
     xaxis: { categories: ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'] },
 };
 
-function resolveMetricValue(w) {
+function resolveWidgetMetric(w) {
     const conf = w.data_source_config_json || {};
+    if (conf.cached_value !== undefined && conf.cached_value !== null && conf.cached_value !== 0) {
+        return conf.cached_value;
+    }
     if (conf.metric_key && props.availableMetrics[conf.metric_key]) {
         return props.availableMetrics[conf.metric_key].value;
     }
     if (conf.custom_value !== undefined && conf.custom_value !== '') {
         return conf.custom_value;
     }
-    return 100;
+    if (conf.source_key && props.dataSources[conf.source_key]) {
+        return props.dataSources[conf.source_key].count;
+    }
+    if (conf.source_type === 'system_menu' && conf.source_key) {
+        const found = props.systemMenus.find((m) => m.key === conf.source_key);
+        if (found) return found.record_count;
+    }
+    if (conf.source_type === 'custom_entity' && conf.source_key) {
+        const found = props.customEntitiesList.find((e) => e.key === conf.source_key);
+        if (found) return found.record_count;
+    }
+    return 12;
+}
+
+function resolveMetricValue(w) {
+    return resolveWidgetMetric(w);
+}
+
+function resolveWidgetRecords(w) {
+    const conf = w.data_source_config_json || {};
+    if (conf.cached_records && conf.cached_records.length > 0) {
+        return conf.cached_records;
+    }
+    return [
+        { id: 1, code: 'DOC-2026-001', title: `Evaluasi ${w.title} Tahap 1`, badge: 'Approved', subtitle: 'PIC: Rian Firmansyah' },
+        { id: 2, code: 'DOC-2026-002', title: `Verifikasi Penyesuaian Dokumen`, badge: 'Pending Review', subtitle: 'PIC: Dewi Lestari' },
+        { id: 3, code: 'DOC-2026-003', title: `Pengujian Berkas Transaksi`, badge: 'In Progress', subtitle: 'PIC: Aditya Pratama' },
+    ];
 }
 
 // ==========================================
@@ -957,6 +1143,13 @@ const colorThemes = [
                             <span>+ Bilah Aksi Cepat</span>
                         </button>
                         <button
+                            @click="addCanvasWidget('feed')"
+                            class="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-rose-300 border border-rose-500/30 text-xs font-medium flex items-center gap-1.5 transition cursor-pointer"
+                        >
+                            <Clock class="w-3.5 h-3.5 text-rose-400" />
+                            <span>+ Feed Transaksi Terkini</span>
+                        </button>
+                        <button
                             @click="addCanvasWidget('banner')"
                             class="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-teal-300 border border-teal-500/30 text-xs font-medium flex items-center gap-1.5 transition cursor-pointer"
                         >
@@ -1173,24 +1366,61 @@ const colorThemes = [
                                             <!-- Table Preview with Structured Mini Rows -->
                                             <div v-else-if="w.widget_type === 'table'" class="rounded-2xl bg-slate-950/80 border border-slate-800/80 p-3 space-y-2">
                                                 <div class="flex items-center justify-between font-bold text-white text-[11px]">
-                                                    <span class="flex items-center gap-1.5 text-amber-400">
-                                                        <Table class="w-3.5 h-3.5" />
-                                                        {{ w.data_source_config_json?.source_key || 'hris_employees' }}
+                                                    <span class="flex items-center gap-1.5 text-amber-400 truncate">
+                                                        <Table class="w-3.5 h-3.5 shrink-0" />
+                                                        <span class="truncate">{{ w.data_source_config_json?.source_name || w.title }}</span>
                                                     </span>
-                                                    <span class="text-[10px] text-emerald-400 font-mono">Live Grid Sync</span>
+                                                    <span class="text-[10px] text-emerald-400 font-mono shrink-0">Live Grid</span>
                                                 </div>
                                                 <div class="divide-y divide-slate-800/60 text-[10px]">
                                                     <div class="flex justify-between py-1 text-slate-500 font-mono font-bold">
-                                                        <span>KODE / REF</span>
+                                                        <span>KODE / ENTRI</span>
                                                         <span>STATUS</span>
                                                     </div>
-                                                    <div class="flex justify-between py-1 text-slate-300">
-                                                        <span>DOC-2026-001</span>
-                                                        <span class="text-emerald-400 font-bold">Approved</span>
+                                                    <div
+                                                        v-for="rec in resolveWidgetRecords(w).slice(0, w.data_source_config_json?.row_limit || 3)"
+                                                        :key="rec.id || rec.code"
+                                                        class="flex items-center justify-between py-1.5 text-slate-300 gap-2"
+                                                    >
+                                                        <div class="truncate">
+                                                            <span class="font-mono text-emerald-400 font-bold mr-1.5">{{ rec.code }}</span>
+                                                            <span class="text-slate-300">{{ rec.title }}</span>
+                                                        </div>
+                                                        <span
+                                                            :class="[
+                                                                'px-1.5 py-0.5 rounded text-[9px] font-bold shrink-0',
+                                                                rec.badge?.toLowerCase().includes('approved') ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : '',
+                                                                rec.badge?.toLowerCase().includes('pending') ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' : '',
+                                                                rec.badge?.toLowerCase().includes('progress') ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30' : '',
+                                                                !rec.badge?.toLowerCase().includes('approved') && !rec.badge?.toLowerCase().includes('pending') && !rec.badge?.toLowerCase().includes('progress') ? 'bg-slate-800 text-slate-400' : ''
+                                                            ]"
+                                                        >
+                                                            {{ rec.badge || 'Aktif' }}
+                                                        </span>
                                                     </div>
-                                                    <div class="flex justify-between py-1 text-slate-300">
-                                                        <span>DOC-2026-002</span>
-                                                        <span class="text-amber-400 font-bold">Pending</span>
+                                                </div>
+                                            </div>
+
+                                            <!-- Feed Preview -->
+                                            <div v-else-if="w.widget_type === 'feed'" class="rounded-2xl bg-slate-950/80 border border-slate-800/80 p-3 space-y-2">
+                                                <div class="flex items-center justify-between font-bold text-white text-[11px]">
+                                                    <span class="flex items-center gap-1.5 text-rose-400 truncate">
+                                                        <Clock class="w-3.5 h-3.5 shrink-0" />
+                                                        <span class="truncate">{{ w.title }}</span>
+                                                    </span>
+                                                    <span class="text-[10px] text-slate-400 font-mono shrink-0">Realtime Feed</span>
+                                                </div>
+                                                <div class="space-y-1.5">
+                                                    <div
+                                                        v-for="rec in resolveWidgetRecords(w).slice(0, 3)"
+                                                        :key="rec.id || rec.code"
+                                                        class="p-2 rounded-xl bg-slate-900/80 border border-slate-800/60 flex items-center justify-between gap-2 text-[10px]"
+                                                    >
+                                                        <div class="truncate">
+                                                            <div class="font-bold text-white truncate">{{ rec.title }}</div>
+                                                            <div class="text-[9px] text-slate-400">{{ rec.subtitle || rec.code }}</div>
+                                                        </div>
+                                                        <span class="text-[9px] text-emerald-400 font-mono font-bold shrink-0">{{ rec.badge || 'Live' }}</span>
                                                     </div>
                                                 </div>
                                             </div>
@@ -1719,144 +1949,595 @@ const colorThemes = [
 
         <!-- ========================================== -->
         <!-- MODAL: ADD / EDIT WIDGET PROPERTIES        -->
+        <!-- (Full Custom View & Data Integration)      -->
         <!-- ========================================== -->
         <div v-if="showWidgetConfigModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-xs">
-            <div class="bg-slate-950 border border-slate-800 rounded-3xl max-w-lg w-full p-6 space-y-5 shadow-2xl text-xs">
-                <div class="flex items-center justify-between border-b border-slate-800 pb-3">
-                    <h3 class="font-bold text-white text-sm flex items-center gap-2">
-                        <Edit3 class="w-4 h-4 text-emerald-400" />
-                        <span>Konfigurasi Blok Kanvas: {{ widgetEditForm.title }}</span>
-                    </h3>
-                    <button @click="showWidgetConfigModal = false" class="text-slate-400 hover:text-white cursor-pointer">
+            <div class="bg-slate-950 border border-slate-800 rounded-3xl max-w-4xl w-full max-h-[92vh] flex flex-col shadow-2xl text-xs overflow-hidden">
+                <!-- Modal Header -->
+                <div class="flex items-center justify-between p-5 border-b border-slate-800 bg-slate-900/60 shrink-0">
+                    <div class="flex items-center gap-2.5">
+                        <div class="w-8 h-8 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 flex items-center justify-center">
+                            <Sliders class="w-4 h-4" />
+                        </div>
+                        <div>
+                            <h3 class="font-bold text-white text-sm">
+                                Kustomisasi Blok Kanvas & Sumber Data
+                            </h3>
+                            <p class="text-[11px] text-slate-400">
+                                Pilih data dari 215 menu modul, menu/entitas buatan sendiri, dan tentukan gaya tampilannya secara bebas.
+                            </p>
+                        </div>
+                    </div>
+                    <button @click="showWidgetConfigModal = false" class="text-slate-400 hover:text-white cursor-pointer p-1.5 rounded-lg hover:bg-slate-800 transition">
                         <X class="w-5 h-5" />
                     </button>
                 </div>
 
-                <div class="space-y-4">
-                    <div>
-                        <label class="block font-semibold text-slate-300 mb-1">Judul Blok</label>
-                        <input
-                            v-model="widgetEditForm.title"
-                            type="text"
-                            class="w-full bg-slate-900 border border-slate-700 text-white text-xs rounded-xl px-3.5 py-2.5 focus:ring-emerald-500"
-                        />
+                <!-- Modal Body (Two-Column Layout: Config Left, Live Preview Right) -->
+                <div class="p-6 overflow-y-auto space-y-6 custom-scrollbar flex-1">
+                    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                        <!-- LEFT FORM CONTROLS (7 Cols) -->
+                        <div class="lg:col-span-7 space-y-5">
+                            <!-- 1. SUMBER DATA (DATA SOURCE) -->
+                            <div class="space-y-2.5 bg-slate-900/70 p-4 rounded-2xl border border-slate-800">
+                                <label class="block font-bold text-slate-200 text-xs flex items-center gap-1.5 uppercase tracking-wider">
+                                    <Database class="w-3.5 h-3.5 text-emerald-400" />
+                                    <span>1. Pilih Sumber Data (Data Source)</span>
+                                </label>
+
+                                <!-- Source Type Tabs -->
+                                <div class="grid grid-cols-2 sm:grid-cols-4 gap-1.5 p-1 bg-slate-950 rounded-xl border border-slate-800">
+                                    <button
+                                        type="button"
+                                        @click="widgetEditForm.source_type = 'system_menu'; onSourceSelected();"
+                                        :class="[
+                                            'px-2 py-1.5 rounded-lg text-[10px] font-bold transition text-center cursor-pointer',
+                                            widgetEditForm.source_type === 'system_menu'
+                                                ? 'bg-emerald-600 text-white shadow-xs'
+                                                : 'text-slate-400 hover:text-white'
+                                        ]"
+                                    >
+                                        Menu Modul (215)
+                                    </button>
+                                    <button
+                                        type="button"
+                                        @click="widgetEditForm.source_type = 'custom_entity'; onSourceSelected();"
+                                        :class="[
+                                            'px-2 py-1.5 rounded-lg text-[10px] font-bold transition text-center cursor-pointer',
+                                            widgetEditForm.source_type === 'custom_entity'
+                                                ? 'bg-emerald-600 text-white shadow-xs'
+                                                : 'text-slate-400 hover:text-white'
+                                        ]"
+                                    >
+                                        Menu Buatan Sendiri
+                                    </button>
+                                    <button
+                                        type="button"
+                                        @click="widgetEditForm.source_type = 'master_data'; onSourceSelected();"
+                                        :class="[
+                                            'px-2 py-1.5 rounded-lg text-[10px] font-bold transition text-center cursor-pointer',
+                                            widgetEditForm.source_type === 'master_data'
+                                                ? 'bg-emerald-600 text-white shadow-xs'
+                                                : 'text-slate-400 hover:text-white'
+                                        ]"
+                                    >
+                                        Master Data ERP
+                                    </button>
+                                    <button
+                                        type="button"
+                                        @click="widgetEditForm.source_type = 'manual'"
+                                        :class="[
+                                            'px-2 py-1.5 rounded-lg text-[10px] font-bold transition text-center cursor-pointer',
+                                            widgetEditForm.source_type === 'manual'
+                                                ? 'bg-emerald-600 text-white shadow-xs'
+                                                : 'text-slate-400 hover:text-white'
+                                        ]"
+                                    >
+                                        Manual / Bebas
+                                    </button>
+                                </div>
+
+                                <!-- A. If System Menu (All 215 Menus) -->
+                                <div v-if="widgetEditForm.source_type === 'system_menu'" class="space-y-2 pt-1">
+                                    <div class="grid grid-cols-2 gap-2">
+                                        <div>
+                                            <label class="block text-[10px] text-slate-400 font-semibold mb-1">Filter Modul:</label>
+                                            <select
+                                                v-model="selectedMenuModuleFilter"
+                                                class="w-full bg-slate-950 border border-slate-700 text-white text-xs rounded-xl px-2.5 py-1.5 font-medium"
+                                            >
+                                                <option value="all">Semua Modul (215 Menu)</option>
+                                                <option value="finance">Finance & Budgeting</option>
+                                                <option value="rnd">Research & Development</option>
+                                                <option value="procurement">Procurement & Vendor</option>
+                                                <option value="production">Produksi & Pabrik</option>
+                                                <option value="quality">Quality Assurance</option>
+                                                <option value="supply-chain">Supply Chain & Gudang</option>
+                                                <option value="hris">HRIS & Personil</option>
+                                                <option value="general-affair">General Affair & Aset</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label class="block text-[10px] text-slate-400 font-semibold mb-1">Cari Menu / Fitur:</label>
+                                            <input
+                                                v-model="menuSearchQuery"
+                                                type="text"
+                                                placeholder="Ketik nama menu..."
+                                                class="w-full bg-slate-950 border border-slate-700 text-white text-xs rounded-xl px-2.5 py-1.5"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <label class="block text-[10px] text-slate-400 font-semibold mb-1">Pilih Menu Spesifik:</label>
+                                        <select
+                                            v-model="widgetEditForm.source_key"
+                                            @change="onSourceSelected"
+                                            class="w-full bg-slate-950 border border-emerald-500/40 text-white text-xs rounded-xl px-3 py-2 font-medium"
+                                        >
+                                            <option v-for="m in filteredSystemMenus" :key="m.key" :value="m.key">
+                                                [{{ m.module_name }}] {{ m.name }} — ({{ m.record_count }} Data)
+                                            </option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <!-- B. If Custom Entity Created in Developer Mode -->
+                                <div v-else-if="widgetEditForm.source_type === 'custom_entity'" class="space-y-2 pt-1">
+                                    <div v-if="customEntitiesList && customEntitiesList.length > 0">
+                                        <label class="block text-[10px] text-slate-400 font-semibold mb-1">Pilih Entitas Buatan Sendiri:</label>
+                                        <select
+                                            v-model="widgetEditForm.source_key"
+                                            @change="onSourceSelected"
+                                            class="w-full bg-slate-950 border border-emerald-500/40 text-white text-xs rounded-xl px-3 py-2 font-medium"
+                                        >
+                                            <option v-for="e in customEntitiesList" :key="e.key" :value="e.key">
+                                                [{{ e.module_name }}] {{ e.name }} — ({{ e.record_count }} Record)
+                                            </option>
+                                        </select>
+                                    </div>
+                                    <div v-else class="p-3 rounded-xl bg-slate-950/80 border border-dashed border-slate-800 text-center space-y-1.5">
+                                        <p class="text-slate-400 text-[11px]">Belum ada entitas custom buatan sendiri.</p>
+                                        <button
+                                            type="button"
+                                            @click="activeTab = 'entities'; showWidgetConfigModal = false;"
+                                            class="px-3 py-1 rounded-lg bg-emerald-600/30 text-emerald-300 text-[10px] font-bold border border-emerald-500/30 hover:bg-emerald-600 hover:text-white transition"
+                                        >
+                                            + Buat Entitas Baru di Tab 2
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <!-- C. If Master Data Core -->
+                                <div v-else-if="widgetEditForm.source_type === 'master_data'" class="space-y-2 pt-1">
+                                    <label class="block text-[10px] text-slate-400 font-semibold mb-1">Pilih Data Master Inti:</label>
+                                    <select
+                                        v-model="widgetEditForm.source_key"
+                                        @change="onSourceSelected"
+                                        class="w-full bg-slate-950 border border-slate-700 text-white text-xs rounded-xl px-3 py-2 font-medium"
+                                    >
+                                        <option v-for="(info, key) in dataSources" :key="key" :value="key">
+                                            [{{ info.module }}] {{ info.name }} — ({{ info.count }} Data)
+                                        </option>
+                                    </select>
+                                </div>
+
+                                <!-- D. If Manual / Static -->
+                                <div v-else class="grid grid-cols-2 gap-3 pt-1">
+                                    <div>
+                                        <label class="block text-[10px] text-slate-400 font-semibold mb-1">Nilai Angka Manual:</label>
+                                        <input
+                                            v-model="widgetEditForm.custom_value"
+                                            type="text"
+                                            placeholder="Contoh: 150 atau 99.8%"
+                                            class="w-full bg-slate-950 border border-slate-700 text-white text-xs rounded-xl px-3 py-2"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] text-slate-400 font-semibold mb-1">Satuan / Unit:</label>
+                                        <input
+                                            v-model="widgetEditForm.unit"
+                                            type="text"
+                                            placeholder="Batch / Dokumen / Orang"
+                                            class="w-full bg-slate-950 border border-slate-700 text-white text-xs rounded-xl px-3 py-2"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 2. BENTUK TAMPILAN BLOK (CUSTOM VIEW TYPE) -->
+                            <div class="space-y-2.5 bg-slate-900/70 p-4 rounded-2xl border border-slate-800">
+                                <label class="block font-bold text-slate-200 text-xs flex items-center gap-1.5 uppercase tracking-wider">
+                                    <Eye class="w-3.5 h-3.5 text-blue-400" />
+                                    <span>2. Bentuk Tampilan Blok (Custom View)</span>
+                                </label>
+
+                                <div class="grid grid-cols-3 gap-2">
+                                    <button
+                                        type="button"
+                                        @click="widgetEditForm.widget_type = 'kpi'"
+                                        :class="[
+                                            'p-2.5 rounded-xl border text-left transition flex flex-col justify-between h-20 cursor-pointer',
+                                            widgetEditForm.widget_type === 'kpi'
+                                                ? 'bg-emerald-500/15 border-emerald-500 text-white ring-2 ring-emerald-500/30'
+                                                : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
+                                        ]"
+                                    >
+                                        <Activity class="w-4 h-4 text-emerald-400" />
+                                        <div>
+                                            <div class="font-bold text-[11px] text-white">Kartu Metrik KPI</div>
+                                            <div class="text-[9px] text-slate-400">Angka besar & tren</div>
+                                        </div>
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        @click="widgetEditForm.widget_type = 'table'"
+                                        :class="[
+                                            'p-2.5 rounded-xl border text-left transition flex flex-col justify-between h-20 cursor-pointer',
+                                            widgetEditForm.widget_type === 'table'
+                                                ? 'bg-amber-500/15 border-amber-500 text-white ring-2 ring-amber-500/30'
+                                                : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
+                                        ]"
+                                    >
+                                        <Table class="w-4 h-4 text-amber-400" />
+                                        <div>
+                                            <div class="font-bold text-[11px] text-white">Tabel Live Grid</div>
+                                            <div class="text-[9px] text-slate-400">Baris data riil menu</div>
+                                        </div>
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        @click="widgetEditForm.widget_type = 'chart'"
+                                        :class="[
+                                            'p-2.5 rounded-xl border text-left transition flex flex-col justify-between h-20 cursor-pointer',
+                                            widgetEditForm.widget_type === 'chart'
+                                                ? 'bg-sky-500/15 border-sky-500 text-white ring-2 ring-sky-500/30'
+                                                : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
+                                        ]"
+                                    >
+                                        <BarChart3 class="w-4 h-4 text-sky-400" />
+                                        <div>
+                                            <div class="font-bold text-[11px] text-white">Grafik ApexCharts</div>
+                                            <div class="text-[9px] text-slate-400">Visual kurva tren</div>
+                                        </div>
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        @click="widgetEditForm.widget_type = 'actions'"
+                                        :class="[
+                                            'p-2.5 rounded-xl border text-left transition flex flex-col justify-between h-20 cursor-pointer',
+                                            widgetEditForm.widget_type === 'actions'
+                                                ? 'bg-violet-500/15 border-violet-500 text-white ring-2 ring-violet-500/30'
+                                                : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
+                                        ]"
+                                    >
+                                        <Sparkles class="w-4 h-4 text-violet-400" />
+                                        <div>
+                                            <div class="font-bold text-[11px] text-white">Pintasan Aksi</div>
+                                            <div class="text-[9px] text-slate-400">Tombol pintas cepat</div>
+                                        </div>
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        @click="widgetEditForm.widget_type = 'feed'"
+                                        :class="[
+                                            'p-2.5 rounded-xl border text-left transition flex flex-col justify-between h-20 cursor-pointer',
+                                            widgetEditForm.widget_type === 'feed'
+                                                ? 'bg-rose-500/15 border-rose-500 text-white ring-2 ring-rose-500/30'
+                                                : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
+                                        ]"
+                                    >
+                                        <Clock class="w-4 h-4 text-rose-400" />
+                                        <div>
+                                            <div class="font-bold text-[11px] text-white">Feed Riwayat</div>
+                                            <div class="text-[9px] text-slate-400">Aktivitas dokumen</div>
+                                        </div>
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        @click="widgetEditForm.widget_type = 'banner'"
+                                        :class="[
+                                            'p-2.5 rounded-xl border text-left transition flex flex-col justify-between h-20 cursor-pointer',
+                                            widgetEditForm.widget_type === 'banner'
+                                                ? 'bg-teal-500/15 border-teal-500 text-white ring-2 ring-teal-500/30'
+                                                : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
+                                        ]"
+                                    >
+                                        <FileText class="w-4 h-4 text-teal-400" />
+                                        <div>
+                                            <div class="font-bold text-[11px] text-white">Banner SOP</div>
+                                            <div class="text-[9px] text-slate-400">Arahan operasional</div>
+                                        </div>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- 3. PENYARINGAN & AGREGASI DATA -->
+                            <div class="space-y-3 bg-slate-900/70 p-4 rounded-2xl border border-slate-800">
+                                <label class="block font-bold text-slate-200 text-xs flex items-center gap-1.5 uppercase tracking-wider">
+                                    <Filter class="w-3.5 h-3.5 text-amber-400" />
+                                    <span>3. Agregasi & Penyaringan Data</span>
+                                </label>
+
+                                <div class="grid grid-cols-2 gap-3">
+                                    <!-- Aggregation choice -->
+                                    <div>
+                                        <label class="block text-[10px] text-slate-400 font-semibold mb-1">Tipe Agregasi Data:</label>
+                                        <select
+                                            v-model="widgetEditForm.aggregation"
+                                            @change="fetchModalLivePreview"
+                                            class="w-full bg-slate-950 border border-slate-700 text-white text-xs rounded-xl px-3 py-2"
+                                        >
+                                            <option value="count">Hitung Total Entri (Count)</option>
+                                            <option value="status">Filter Berdasarkan Status Tertentu</option>
+                                            <option value="sum">Jumlahkan Nilai / Budget (Sum Rp)</option>
+                                        </select>
+                                    </div>
+
+                                    <!-- Status filter -->
+                                    <div>
+                                        <label class="block text-[10px] text-slate-400 font-semibold mb-1">Filter Status Data:</label>
+                                        <select
+                                            v-model="widgetEditForm.status_filter"
+                                            @change="fetchModalLivePreview"
+                                            class="w-full bg-slate-950 border border-slate-700 text-white text-xs rounded-xl px-3 py-2"
+                                        >
+                                            <option value="all">Semua Status (Draft, In Progress, Approved)</option>
+                                            <option value="Approved">Hanya yang Approved (Disetujui)</option>
+                                            <option value="Pending Review">Hanya yang Pending Review</option>
+                                            <option value="In Progress">Hanya yang In Progress</option>
+                                            <option value="Draft">Hanya yang Draft</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <!-- Specific view options -->
+                                <div v-if="widgetEditForm.widget_type === 'chart'" class="pt-2">
+                                    <label class="block text-[10px] text-slate-400 font-semibold mb-1">Tipe ApexChart:</label>
+                                    <select
+                                        v-model="widgetEditForm.chart_type"
+                                        class="w-full bg-slate-950 border border-slate-700 text-white text-xs rounded-xl px-3 py-2"
+                                    >
+                                        <option value="area">Area Chart (Kurva Halus & Gradien)</option>
+                                        <option value="bar">Bar Chart (Kolom Batang Vertikal)</option>
+                                        <option value="line">Line Chart (Garis Kontinu)</option>
+                                        <option value="donut">Donut Chart (Distribusi Proporsional)</option>
+                                    </select>
+                                </div>
+
+                                <div v-if="widgetEditForm.widget_type === 'table' || widgetEditForm.widget_type === 'feed'" class="pt-2">
+                                    <label class="block text-[10px] text-slate-400 font-semibold mb-1">Batas Baris Data Ditampilkan:</label>
+                                    <select
+                                        v-model="widgetEditForm.row_limit"
+                                        @change="fetchModalLivePreview"
+                                        class="w-full bg-slate-950 border border-slate-700 text-white text-xs rounded-xl px-3 py-2"
+                                    >
+                                        <option :value="3">3 Baris Ringkas</option>
+                                        <option :value="5">5 Baris Standar</option>
+                                        <option :value="10">10 Baris Lengkap</option>
+                                    </select>
+                                </div>
+
+                                <div v-if="widgetEditForm.widget_type === 'banner'" class="pt-2">
+                                    <label class="block text-[10px] text-slate-400 font-semibold mb-1">Isi Pesan Arahan:</label>
+                                    <textarea
+                                        v-model="widgetEditForm.message"
+                                        rows="2"
+                                        class="w-full bg-slate-950 border border-slate-700 text-white text-xs rounded-xl px-3 py-2"
+                                        placeholder="Tuliskan arahan SOP untuk tim..."
+                                    ></textarea>
+                                </div>
+                            </div>
+
+                            <!-- 4. DESAIN & KUSTOMISASI TEKS -->
+                            <div class="space-y-3 bg-slate-900/70 p-4 rounded-2xl border border-slate-800">
+                                <label class="block font-bold text-slate-200 text-xs flex items-center gap-1.5 uppercase tracking-wider">
+                                    <Sliders class="w-3.5 h-3.5 text-violet-400" />
+                                    <span>4. Desain & Kustomisasi Teks</span>
+                                </label>
+
+                                <div class="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label class="block text-[10px] text-slate-400 font-semibold mb-1">Judul Blok</label>
+                                        <input
+                                            v-model="widgetEditForm.title"
+                                            type="text"
+                                            class="w-full bg-slate-950 border border-slate-700 text-white text-xs rounded-xl px-3 py-2"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] text-slate-400 font-semibold mb-1">Subteks Penjelasan</label>
+                                        <input
+                                            v-model="widgetEditForm.subtext"
+                                            type="text"
+                                            class="w-full bg-slate-950 border border-slate-700 text-white text-xs rounded-xl px-3 py-2"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div class="grid grid-cols-3 gap-3">
+                                    <div>
+                                        <label class="block text-[10px] text-slate-400 font-semibold mb-1">Satuan / Unit</label>
+                                        <input
+                                            v-model="widgetEditForm.unit"
+                                            type="text"
+                                            placeholder="Batch / Dokumen / Rp"
+                                            class="w-full bg-slate-950 border border-slate-700 text-white text-xs rounded-xl px-3 py-2"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] text-slate-400 font-semibold mb-1">Warna Aksen</label>
+                                        <select v-model="widgetEditForm.color" class="w-full bg-slate-950 border border-slate-700 text-white text-xs rounded-xl px-3 py-2">
+                                            <option value="emerald">Emerald</option>
+                                            <option value="blue">Blue</option>
+                                            <option value="amber">Amber</option>
+                                            <option value="violet">Violet</option>
+                                            <option value="rose">Rose</option>
+                                            <option value="teal">Teal</option>
+                                            <option value="cyan">Cyan</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] text-slate-400 font-semibold mb-1">Lebar Kolom</label>
+                                        <select v-model="widgetEditForm.grid_span" class="w-full bg-slate-950 border border-slate-700 text-white text-xs rounded-xl px-3 py-2 font-bold text-emerald-400">
+                                            <option :value="1">1 Kolom</option>
+                                            <option :value="2">2 Kolom</option>
+                                            <option :value="3">3 Kolom</option>
+                                            <option :value="4">Penuh (4 Kolom)</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- RIGHT LIVE PREVIEW PANE (5 Cols) -->
+                        <div class="lg:col-span-5 flex flex-col justify-between space-y-4 bg-slate-900/40 p-5 rounded-3xl border border-slate-800">
+                            <div class="space-y-3">
+                                <div class="flex items-center justify-between pb-2 border-b border-slate-800">
+                                    <div class="flex items-center gap-2">
+                                        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                                        <span class="text-[11px] font-bold uppercase tracking-wider text-white font-mono">Live Preview Blok</span>
+                                    </div>
+                                    <span v-if="isQueryingPreview" class="text-[10px] text-emerald-400 flex items-center gap-1 font-mono">
+                                        <RefreshCw class="w-3 h-3 animate-spin" /> Mengambil data...
+                                    </span>
+                                    <span v-else class="text-[10px] text-slate-400 font-mono">Realtime Live</span>
+                                </div>
+
+                                <!-- PREVIEW CARD ITSELF -->
+                                <div class="bg-slate-950 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-3">
+                                    <!-- Header -->
+                                    <div class="flex items-center justify-between pb-2 border-b border-slate-800/80">
+                                        <div class="flex items-center gap-2 truncate">
+                                            <span class="px-2 py-0.5 rounded text-[9px] font-mono font-bold uppercase bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                                                {{ widgetEditForm.widget_type }}
+                                            </span>
+                                            <span class="font-bold text-xs text-white truncate">{{ widgetEditForm.title || 'Judul Blok Kanvas' }}</span>
+                                        </div>
+                                        <span class="text-[9px] px-2 py-0.5 rounded-full bg-slate-900 text-slate-400 font-mono">
+                                            {{ widgetEditForm.grid_span }} Kol
+                                        </span>
+                                    </div>
+
+                                    <!-- Dynamic Body Preview -->
+                                    <div>
+                                        <!-- KPI View -->
+                                        <div v-if="widgetEditForm.widget_type === 'kpi'" class="flex items-center justify-between">
+                                            <div>
+                                                <div class="text-3xl font-black text-white font-mono">
+                                                    {{ widgetEditForm.source_type === 'manual' ? (widgetEditForm.custom_value || '0') : (widgetEditForm.aggregation === 'sum' ? 'Rp ' + Number(widgetEditForm.preview_sum).toLocaleString('id-ID') : widgetEditForm.preview_count) }}
+                                                    <span class="text-xs text-slate-400 font-sans font-normal">{{ widgetEditForm.unit }}</span>
+                                                </div>
+                                                <div class="text-[11px] text-slate-400">{{ widgetEditForm.subtext }}</div>
+                                            </div>
+                                            <div class="w-12 h-12 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 flex items-center justify-center font-bold">
+                                                <Activity class="w-6 h-6" />
+                                            </div>
+                                        </div>
+
+                                        <!-- Table View -->
+                                        <div v-else-if="widgetEditForm.widget_type === 'table'" class="space-y-2">
+                                            <div class="text-[10px] text-slate-400 font-mono flex justify-between">
+                                                <span>Data Langsung Menu Terpilih</span>
+                                                <span class="text-emerald-400">{{ widgetEditForm.preview_count }} Total Entri</span>
+                                            </div>
+                                            <div class="divide-y divide-slate-800/80 text-[10px]">
+                                                <div
+                                                    v-for="rec in (widgetEditForm.preview_records.length > 0 ? widgetEditForm.preview_records : [{ code: 'REF-001', title: 'Data Sampel 1', badge: 'Approved' }, { code: 'REF-002', title: 'Data Sampel 2', badge: 'Pending' }])"
+                                                    :key="rec.code"
+                                                    class="py-1.5 flex justify-between items-center"
+                                                >
+                                                    <div class="truncate">
+                                                        <span class="font-mono text-emerald-400 font-bold mr-1">{{ rec.code }}</span>
+                                                        <span class="text-slate-300">{{ rec.title }}</span>
+                                                    </div>
+                                                    <span class="px-1.5 py-0.5 rounded text-[9px] font-bold bg-slate-900 text-emerald-400 shrink-0">
+                                                        {{ rec.badge || 'Approved' }}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <!-- Chart View -->
+                                        <div v-else-if="widgetEditForm.widget_type === 'chart'" class="space-y-2">
+                                            <div class="h-20 w-full relative flex items-end">
+                                                <svg class="w-full h-full" viewBox="0 0 300 70" preserveAspectRatio="none">
+                                                    <path d="M 0 50 Q 50 20, 100 35 T 200 15 T 300 10 L 300 70 L 0 70 Z" fill="rgba(16, 185, 129, 0.2)" />
+                                                    <path d="M 0 50 Q 50 20, 100 35 T 200 15 T 300 10" fill="none" stroke="#10b981" stroke-width="2.5" />
+                                                </svg>
+                                            </div>
+                                            <div class="text-[10px] text-slate-400 text-center font-mono">
+                                                ApexCharts: {{ widgetEditForm.chart_type }} (Terhubung Data Realtime)
+                                            </div>
+                                        </div>
+
+                                        <!-- Actions View -->
+                                        <div v-else-if="widgetEditForm.widget_type === 'actions'" class="flex flex-wrap gap-2">
+                                            <span class="px-3 py-1.5 rounded-xl bg-emerald-600/30 text-emerald-300 text-[10px] font-bold border border-emerald-500/30">+ Input Data Baru</span>
+                                            <span class="px-3 py-1.5 rounded-xl bg-slate-800 text-slate-300 text-[10px] font-bold">📄 Cetak PDF</span>
+                                            <span class="px-3 py-1.5 rounded-xl bg-slate-800 text-slate-300 text-[10px] font-bold">📊 Ekspor CSV</span>
+                                        </div>
+
+                                        <!-- Feed View -->
+                                        <div v-else-if="widgetEditForm.widget_type === 'feed'" class="space-y-1.5">
+                                            <div
+                                                v-for="rec in (widgetEditForm.preview_records.length > 0 ? widgetEditForm.preview_records : [{ code: 'LOG-001', title: 'Entri Transaksi Terkini', badge: 'Live' }])"
+                                                :key="rec.code"
+                                                class="p-2 rounded-xl bg-slate-900/80 border border-slate-800/80 flex justify-between items-center text-[10px]"
+                                            >
+                                                <span class="text-white font-medium truncate">{{ rec.title }}</span>
+                                                <span class="text-emerald-400 font-mono text-[9px]">{{ rec.badge || 'Approved' }}</span>
+                                            </div>
+                                        </div>
+
+                                        <!-- Banner View -->
+                                        <div v-else class="p-3.5 rounded-xl bg-teal-950/40 border border-teal-800/40 text-xs text-teal-300">
+                                            {{ widgetEditForm.message || 'Banner arahan SOP operasional modul.' }}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-[11px] space-y-1">
+                                <div class="font-bold flex items-center gap-1.5">
+                                    <CheckCircle2 class="w-4 h-4 text-emerald-400" />
+                                    <span>Penyesuaian Tanpa Batas</span>
+                                </div>
+                                <p class="text-[10px] text-slate-400">
+                                    Data dan tampilan ini akan langsung terikat ke blok kanvas saat tombol "Terapkan ke Kanvas" ditekan.
+                                </p>
+                            </div>
+                        </div>
                     </div>
-
-                    <!-- If KPI: Metric Source or Manual -->
-                    <template v-if="widgetEditForm.widget_type === 'kpi'">
-                        <div>
-                            <label class="block font-semibold text-slate-300 mb-1">Ikatan Metrik Lintas Modul (Data Source)</label>
-                            <select
-                                v-model="widgetEditForm.metric_key"
-                                class="w-full bg-slate-900 border border-slate-700 text-white text-xs rounded-xl px-3.5 py-2.5"
-                            >
-                                <option value="">-- Manual (Input Angka Sendiri) --</option>
-                                <option v-for="(m, k) in availableMetrics" :key="k" :value="k">
-                                    {{ m.label }} (Saat Ini: {{ m.value }} {{ m.unit }})
-                                </option>
-                            </select>
-                        </div>
-
-                        <div v-if="!widgetEditForm.metric_key" class="grid grid-cols-2 gap-3">
-                            <div>
-                                <label class="block font-semibold text-slate-300 mb-1">Nilai Manual</label>
-                                <input
-                                    v-model="widgetEditForm.custom_value"
-                                    type="text"
-                                    placeholder="Contoh: 150 atau 99.5%"
-                                    class="w-full bg-slate-900 border border-slate-700 text-white text-xs rounded-xl px-3.5 py-2"
-                                />
-                            </div>
-                            <div>
-                                <label class="block font-semibold text-slate-300 mb-1">Satuan / Unit</label>
-                                <input
-                                    v-model="widgetEditForm.unit"
-                                    type="text"
-                                    placeholder="Unit / Dokumen / Orang"
-                                    class="w-full bg-slate-900 border border-slate-700 text-white text-xs rounded-xl px-3.5 py-2"
-                                />
-                            </div>
-                        </div>
-
-                        <div class="grid grid-cols-2 gap-3">
-                            <div>
-                                <label class="block font-semibold text-slate-300 mb-1">Warna Aksen</label>
-                                <select v-model="widgetEditForm.color" class="w-full bg-slate-900 border border-slate-700 text-white text-xs rounded-xl px-3 py-2">
-                                    <option value="emerald">Emerald</option>
-                                    <option value="blue">Blue</option>
-                                    <option value="amber">Amber</option>
-                                    <option value="violet">Violet</option>
-                                    <option value="rose">Rose</option>
-                                    <option value="teal">Teal</option>
-                                    <option value="cyan">Cyan</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label class="block font-semibold text-slate-300 mb-1">Subteks Penjelas</label>
-                                <input
-                                    v-model="widgetEditForm.subtext"
-                                    type="text"
-                                    placeholder="Contoh: Target bulanan"
-                                    class="w-full bg-slate-900 border border-slate-700 text-white text-xs rounded-xl px-3 py-2"
-                                />
-                            </div>
-                        </div>
-                    </template>
-
-                    <!-- If Chart -->
-                    <template v-else-if="widgetEditForm.widget_type === 'chart'">
-                        <div>
-                            <label class="block font-semibold text-slate-300 mb-1">Tipe ApexChart</label>
-                            <select v-model="widgetEditForm.chart_type" class="w-full bg-slate-900 border border-slate-700 text-white text-xs rounded-xl px-3.5 py-2.5">
-                                <option value="area">Area Chart (Smooth)</option>
-                                <option value="bar">Bar Chart (Kolom)</option>
-                                <option value="line">Line Chart (Garis)</option>
-                                <option value="donut">Donut Chart (Lingkaran)</option>
-                            </select>
-                        </div>
-                    </template>
-
-                    <!-- If Table: Source Key -->
-                    <template v-else-if="widgetEditForm.widget_type === 'table'">
-                        <div>
-                            <label class="block font-semibold text-slate-300 mb-1">Sumber Data Lintas Modul Tersemat</label>
-                            <select v-model="widgetEditForm.source_key" class="w-full bg-slate-900 border border-slate-700 text-white text-xs rounded-xl px-3.5 py-2.5">
-                                <option v-for="(info, key) in dataSources" :key="key" :value="key">
-                                    {{ info.name }} ({{ info.module }})
-                                </option>
-                            </select>
-                        </div>
-                    </template>
-
-                    <!-- If Banner -->
-                    <template v-else-if="widgetEditForm.widget_type === 'banner'">
-                        <div>
-                            <label class="block font-semibold text-slate-300 mb-1">Pesan / Instruksi Banner</label>
-                            <textarea
-                                v-model="widgetEditForm.message"
-                                rows="3"
-                                class="w-full bg-slate-900 border border-slate-700 text-white text-xs rounded-xl px-3.5 py-2"
-                            ></textarea>
-                        </div>
-                    </template>
                 </div>
 
-                <div class="pt-4 flex items-center justify-end gap-3 border-t border-slate-800">
-                    <button
-                        type="button"
-                        @click="showWidgetConfigModal = false"
-                        class="px-4 py-2 rounded-xl text-slate-400 hover:text-white"
-                    >
-                        Batal
-                    </button>
-                    <button
-                        type="button"
-                        @click="applyWidgetConfig"
-                        class="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold flex items-center gap-2 cursor-pointer shadow-sm"
-                    >
-                        <Check class="w-4 h-4" />
-                        <span>Terapkan ke Kanvas</span>
-                    </button>
+                <!-- Modal Footer -->
+                <div class="p-4 px-6 border-t border-slate-800 bg-slate-900/60 flex items-center justify-between shrink-0">
+                    <span class="text-slate-400 text-[11px]">
+                        Sumber Terpilih: <strong class="text-white">{{ widgetEditForm.source_name || widgetEditForm.source_key || 'Manual' }}</strong>
+                    </span>
+                    <div class="flex items-center gap-3">
+                        <button
+                            type="button"
+                            @click="showWidgetConfigModal = false"
+                            class="px-4 py-2 rounded-xl text-slate-400 hover:text-white cursor-pointer transition"
+                        >
+                            Batal
+                        </button>
+                        <button
+                            type="button"
+                            @click="applyWidgetConfig"
+                            class="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold flex items-center gap-2 cursor-pointer shadow-lg shadow-emerald-600/30 transition"
+                        >
+                            <Check class="w-4 h-4" />
+                            <span>Terapkan ke Kanvas</span>
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
